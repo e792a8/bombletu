@@ -1,0 +1,15 @@
+services:
+  napcat:
+    image: docker.1ms.run/mlikiowa/napcat-docker:latest
+    hostname: bombletu-napcat
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - 6099:6099
+      - 3001:3001
+    volumes:
+      - ./data/napcat/config:/app/napcat/config
+      - ./data/napcat/config_qq:/app/.config/QQ
