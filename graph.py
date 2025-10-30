@@ -41,12 +41,14 @@ SYSTEM_PROMPT = f"""
 你可以使用get_messages工具获取群消息。
 你的账号是“{USR}”，昵称是“{NICK}”，消息记录里会出现你自己的消息，注意分别。
 消息记录的格式：每行代表一条消息或一些指示， [on 日期 时间] 或 [on 时间] 和 [from 账号 (昵称)] 指示随后消息的发送时间和发送者。消息记录中可能会有未转义的中括号、换行符等，需要你稍加分别。消息中 [CQ:at,qq=账号] 的格式表示提及某人，例如 [CQ:at,qq={USR}] 表示提及你。你在发送消息时也可以用此格式提及别人。
+你在发送消息时可以在消息开头使用 [CQ:reply,id=消息ID] 的格式回复某条消息，消息ID的查询方法是使用get_messages工具的with_id参数。你在正常浏览消息记录时无需使用with_id参数，减小信息量。
 如果你想要发送一些消息，就使用send工具。
-当群里不没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以调用idle暂停一会。你的精力有限，连续进行10次操作左右，需要调用idle暂停几分钟。
+当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以调用idle暂停一会。你的精力有限，连续进行10次操作左右，需要调用idle暂停几分钟。
 暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分至甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。
-在你运行过程中实时发生的事件将通过用户角色消息告知你。
-不要等待用户角色对你下达指示，你需要自己找事做。
+在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
+不要等待user角色对你下达指令，你需要自己找事做。
 """.strip()
+# 现在你正在进行测试，你要直接对群里最后第4条消息回复“测试”，然后暂停30分钟。
 # 现在你正在测试中，接下来你要直接调用get_messages(fro=80,to=61)读取消息记录，对这段记录进行总结，调用send将总结的内容发出，然后循环进行：调用idle(minutes=1)暂停1分钟，之后判断暂停是正常结束还是被事件中断，将你的判断用send发出。
 # 初始时你精力足够，请你直接开始进行操作。
 
@@ -76,18 +78,31 @@ def idle(minutes: int) -> int:
 async def get_unread(limit: int) -> dict:
     """获取未读消息列表。
     参数limit表示限制返回的消息数量。
-    返回的消息末尾带有指示 [unread 数量] 表示这些消息后剩余未读消息数量。
+    返回的消息列表末尾带有指示 [unread 数量] 表示这些消息后剩余未读消息数量。
     """
     return await config["configurable"]["app"].get_unread(limit)  # type: ignore
 
 
 @tool
-async def get_messages(fro: int, to: int) -> list:  # FIXME when #6318 is ok
+async def get_messages(
+    fro: int, to: int, with_id: bool = False
+) -> list:  # FIXME when #6318 is ok
     """查阅消息记录。
-    参数fro,to表示消息编号区间的开始和结束，最新的消息编号为1，编号由新到旧递增，返回的列表按由旧到新的顺序排列。
-    例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。"""
-    return await config["configurable"]["app"].get_messages(fro, to)  # type: ignore
+    参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
+    例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
+    参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。"""
+    return await config["configurable"]["app"].get_messages(fro, to, with_id)  # type: ignore
     # bigmodel.cn传dict会报错，ai.gitee.com就没事，最好兼一下
+
+
+@tool
+async def get_messages_by_id(id: str, before: int = 0, after: int = 0):
+    """按消息ID查阅消息记录。
+    参数id为查阅的目标消息ID，before为在目标消息前附带的消息数量，after为在目标消息后附带的消息数量。
+    返回的消息列表开头带有指示 [seq <fro> <to>] 表示这些消息当前的序号区间，<fro> <to> 值分别对应 get_messages 工具的 fro to 参数。目标消息的行首带有指示 [this] ，该条消息的ID即为查询的ID。
+    """
+    pass  # TODO
+    # api = config["configurable"]["app"].qbot.api
 
 
 # model = ChatOllama(

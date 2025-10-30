@@ -34,7 +34,7 @@ def msgconv(event: GroupMessageEvent):
     }
 
 
-def msglfmt(events: List[GroupMessageEvent]):
+def msglfmt(events: List[GroupMessageEvent], with_id=False):
     d = None
     t = None
     fro = None
@@ -54,7 +54,13 @@ def msglfmt(events: List[GroupMessageEvent]):
         fro = e.sender.user_id
         if len(infoln) > 0:
             l.append(infoln)
-        l.append(f"{e.raw_message}")
+        msgln = ""
+        if with_id == True:
+            msgln += f"[id {e.message_id}]"
+        elif with_id == e.message_id:
+            msgln += "[this]"
+        msgln += e.raw_message
+        l.append(msgln)
     return "\n".join(l)
 
 
@@ -77,11 +83,14 @@ class App:
             logger.warning(f"get_message error: {e}")
             return "[error 软件暂时故障]"
 
-    async def get_messages(self, fro: int, to: int) -> str:
-        logger.info(f"get_messages: {fro}, {to}")
+    async def get_messages(self, fro: int, to: int, with_id: bool = False) -> str:
+        logger.info(f"get_messages: {fro}, {to}, {with_id}")
         try:
             return msglfmt(
-                (await self.qbot.api.get_group_msg_history(GRP, 0, fro))[: fro - to + 1]
+                (await self.qbot.api.get_group_msg_history(GRP, 0, fro))[
+                    : fro - to + 1
+                ],
+                with_id,
             )
         except NapCatAPIError as e:
             logger.warning(f"get_message error: {e}")
@@ -164,7 +173,10 @@ async def agent_loop(app: App):
         ret = await agent.ainvoke({"messages": msg_inject}, config=agentconfig, context=app, print_mode="updates")  # type: ignore
         logger.debug(f"agent return: {ret}")
         idle_id, mins = check_idle_call(ret)
-        logger.info(f"agent sleeping {mins}min")
+        if idle_id:
+            logger.info(f"agent sleeping {mins}min")
+        else:
+            logger.info(f"agent continuing")
         intr = await app.wait_intr(mins)
         unread = await app.collect_unread()
         msg_inject = []
