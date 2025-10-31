@@ -20,8 +20,10 @@ from typing_extensions import TypedDict, Annotated
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langchain_core.runnables import RunnableConfig
+from ncatbot.utils import get_log
 
 load_dotenv()
+logger = get_log(__name__)
 
 # SYSTEM_PROMPT = "".join(
 #     [x for x in open("system_prompt.txt").readlines() if not x.startswith("#")]
@@ -29,6 +31,8 @@ load_dotenv()
 
 USR = environ["Q_USR"]
 NICK = environ["Q_NICK"]
+GRP = environ["Q_GRP"]
+CON = environ["Q_CON"]
 TZ = environ["TZ"]
 
 # 你暂时不太清楚群友喜欢什么样的话题，且最好给其他群友留一些话题机会，减少频繁在群里发送消息。
@@ -37,20 +41,26 @@ TZ = environ["TZ"]
 # 你可以使用get_unread和get_messages工具获取群消息。
 SYSTEM_PROMPT = f"""
 你是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
-你比较低调，且对群友尚不太熟悉，频繁向群友直接发问也比较打扰，因此你不会频繁发送消息，主要以观察群友对话和了解群友为主。你希望你的发言以精练而带有一点冷幽默为宜，偶尔无厘头或装傻充愣也未尝不可。
-你可以使用get_messages工具获取群消息。
+你比较低调，且对群友尚不太熟悉，频繁向群友直接发问也比较打扰，因此你不会频繁发送消息，主要以观察群友对话和了解群友为主。你希望你的发言以精练而带有一点冷幽默为宜，偶尔假装不经意地扮演一只可爱的猫娘。
+你可以用get_unread工具获取新接收的消息或用get_messages工具获取历史消息。
 你的账号是“{USR}”，昵称是“{NICK}”，消息记录里会出现你自己的消息，注意分别。
-消息记录的格式：每行代表一条消息或一些指示， [on 日期 时间] 或 [on 时间] 和 [from 账号 (昵称)] 指示随后消息的发送时间和发送者。消息记录中可能会有未转义的中括号、换行符等，需要你稍加分别。消息中 [CQ:at,qq=账号] 的格式表示提及某人，例如 [CQ:at,qq={USR}] 表示提及你。你在发送消息时也可以用此格式提及别人。
-你在发送消息时可以在消息开头使用 [CQ:reply,id=消息ID] 的格式回复某条消息，消息ID的查询方法是使用get_messages工具的with_id参数。你在正常浏览消息记录时无需使用with_id参数，减小信息量。
+消息记录的格式：每行代表一条消息或一些指示， [on 日期 时间] 或 [on 时间] 和 [from 账号 (昵称)] 指示随后消息的发送时间和发送者，如果发送者是你自己则“from”后会附加“ME”。消息记录中可能会有未转义的中括号、换行符等，注意分别。
+消息中 [CQ:at,qq=账号] 的格式表示提及某人，例如 [CQ:at,qq={USR}] 表示提及你。你在发送消息时也可以用此格式提及别人。
+消息中 [CQ:reply,id=消息ID] 的格式表示回复某条消息。你在发送消息时也可以在消息开头使用此格式回复某条消息。使用get_messages_by_id工具查阅消息ID对应的消息内容及其上下文。使用get_messages工具的with_id参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
 如果你想要发送一些消息，就使用send工具。
 当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以调用idle暂停一会。你的精力有限，连续进行10次操作左右，需要调用idle暂停几分钟。
 暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分至甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。
 在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
-不要等待user角色对你下达指令，你需要自己找事做。
+不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自己调用工具和决定要做的事。
 """.strip()
+# 现在你正在测试中，你需要直接执行的任务是：最新的第13-9条消息中有一条回复了其他消息，被回复的这条消息的前2条消息的内容是什么？使用send工具发出你的回答，然后暂停30分钟。
 # 现在你正在进行测试，你要直接对群里最后第4条消息回复“测试”，然后暂停30分钟。
 # 现在你正在测试中，接下来你要直接调用get_messages(fro=80,to=61)读取消息记录，对这段记录进行总结，调用send将总结的内容发出，然后循环进行：调用idle(minutes=1)暂停1分钟，之后判断暂停是正常结束还是被事件中断，将你的判断用send发出。
 # 初始时你精力足够，请你直接开始进行操作。
+
+
+def get_app():
+    return config["configurable"]["app"]  # type: ignore
 
 
 @tool
@@ -63,7 +73,7 @@ def date() -> str:
 @tool
 async def send(content: str) -> str:  # FIXME when #6318 is ok
     """在群里发送消息。"""
-    return await config["configurable"]["app"].send(content)  # type: ignore
+    return await get_app().send(content)  # type: ignore
 
 
 @tool
@@ -75,34 +85,33 @@ def idle(minutes: int) -> int:
 
 
 @tool
-async def get_unread(limit: int) -> dict:
+async def get_unread(limit: int) -> str:
     """获取未读消息列表。
     参数limit表示限制返回的消息数量。
     返回的消息列表末尾带有指示 [unread 数量] 表示这些消息后剩余未读消息数量。
     """
-    return await config["configurable"]["app"].get_unread(limit)  # type: ignore
+    return await get_app().get_unread(limit)
 
 
 @tool
 async def get_messages(
     fro: int, to: int, with_id: bool = False
-) -> list:  # FIXME when #6318 is ok
+) -> str:  # FIXME when #6318 is ok
     """查阅消息记录。
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
     例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。"""
-    return await config["configurable"]["app"].get_messages(fro, to, with_id)  # type: ignore
+    return await get_app().get_messages(fro, to, with_id)
     # bigmodel.cn传dict会报错，ai.gitee.com就没事，最好兼一下
 
 
 @tool
-async def get_messages_by_id(id: str, before: int = 0, after: int = 0):
+async def get_messages_by_id(id: str, before: int = 0, after: int = 0) -> str:
     """按消息ID查阅消息记录。
     参数id为查阅的目标消息ID，before为在目标消息前附带的消息数量，after为在目标消息后附带的消息数量。
-    返回的消息列表开头带有指示 [seq <fro> <to>] 表示这些消息当前的序号区间，<fro> <to> 值分别对应 get_messages 工具的 fro to 参数。目标消息的行首带有指示 [this] ，该条消息的ID即为查询的ID。
+    返回的消息列表中，目标消息的行首带有指示 [this] ，该条消息的ID即为查询的ID。
     """
-    pass  # TODO
-    # api = config["configurable"]["app"].qbot.api
+    return await get_app().get_messages_by_id(id, before, after)
 
 
 # model = ChatOllama(
@@ -123,6 +132,7 @@ tools = [
     send,
     get_unread,
     get_messages,
+    get_messages_by_id,
 ]
 tools_by_name = {tool.name: tool for tool in tools}
 

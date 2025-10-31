@@ -34,7 +34,7 @@ def msgconv(event: GroupMessageEvent):
     }
 
 
-def msglfmt(events: List[GroupMessageEvent], with_id=False):
+def msglfmt(events: List[GroupMessageEvent], with_id: bool | str = False):
     d = None
     t = None
     fro = None
@@ -50,7 +50,10 @@ def msglfmt(events: List[GroupMessageEvent], with_id=False):
             infoln += f"[on {et}]"
         d, t = ed, et
         if e.sender.user_id != fro:
-            infoln += f"[from {e.sender.user_id} ({e.sender.nickname})]"
+            if e.sender.user_id == USR:
+                infoln += f"[from ME {e.sender.user_id} ({e.sender.nickname})]"
+            else:
+                infoln += f"[from {e.sender.user_id} ({e.sender.nickname})]"
         fro = e.sender.user_id
         if len(infoln) > 0:
             l.append(infoln)
@@ -94,6 +97,17 @@ class App:
             )
         except NapCatAPIError as e:
             logger.warning(f"get_message error: {e}")
+            return "[error 软件暂时故障]"
+
+    async def get_messages_by_id(self, id: str, before: int, after: int) -> str:
+        api = self.qbot.api
+        try:
+            bef = await api.get_group_msg_history(GRP, id, before + 1, True)
+            aft = await api.get_group_msg_history(GRP, id, after + 1, False)
+            lst = bef + aft[1:]
+            return msglfmt(lst, id)
+        except NapCatAPIError as e:
+            logger.error(f"{e}")
             return "[error 软件暂时故障]"
 
     async def collect_unread(self) -> int:
