@@ -5,7 +5,6 @@ from langgraph.runtime import Runtime
 from langgraph.graph import add_messages
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from os import environ
-from dotenv import load_dotenv
 from datetime import datetime
 import pytz
 from langchain.messages import (
@@ -20,20 +19,14 @@ from typing_extensions import TypedDict, Annotated
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langchain_core.runnables import RunnableConfig
-from ncatbot.utils import get_log
+from config import *
+from cqface import CQFACE
 
-load_dotenv()
 logger = get_log(__name__)
 
 # SYSTEM_PROMPT = "".join(
 #     [x for x in open("system_prompt.txt").readlines() if not x.startswith("#")]
 # ).strip()
-
-USR = environ["Q_USR"]
-NICK = environ["Q_NICK"]
-GRP = environ["Q_GRP"]
-CON = environ["Q_CON"]
-TZ = environ["TZ"]
 
 # 你暂时不太清楚群友喜欢什么样的话题，且最好给其他群友留一些话题机会，减少频繁在群里发送消息。
 # 你说话喜欢冷幽默。
@@ -42,11 +35,17 @@ TZ = environ["TZ"]
 SYSTEM_PROMPT = f"""
 你是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
 你比较低调，且对群友尚不太熟悉，频繁向群友直接发问也比较打扰，因此你不会频繁发送消息，主要以观察群友对话和了解群友为主。你希望你的发言以精练而带有一点冷幽默为宜，偶尔假装不经意地扮演一只可爱的猫娘。
+
 你可以用get_unread工具获取新接收的消息或用get_messages工具获取历史消息。
 你的账号是“{USR}”，昵称是“{NICK}”，消息记录里会出现你自己的消息，注意分别。
+
 消息记录的格式：每行代表一条消息或一些指示， [on 日期 时间] 或 [on 时间] 和 [from 账号 (昵称)] 指示随后消息的发送时间和发送者，如果发送者是你自己则“from”后会附加“ME”。消息记录中可能会有未转义的中括号、换行符等，注意分别。
-消息中 [CQ:at,qq=账号] 的格式表示提及某人，例如 [CQ:at,qq={USR}] 表示提及你。你在发送消息时也可以用此格式提及别人。
-消息中 [CQ:reply,id=消息ID] 的格式表示回复某条消息。你在发送消息时也可以在消息开头使用此格式回复某条消息。使用get_messages_by_id工具查阅消息ID对应的消息内容及其上下文。使用get_messages工具的with_id参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
+消息内容中有一些特殊元素，你在发送消息时也可以使用：
+[:at 账号] 提及某人， [:at ALL] 提及群中所有人。如果是提及你的，则在“at”后会附加“ME”。
+[:refer 消息ID] 引用某条消息。此元素每条消息中只能使用最多1次，且应放在消息开头。使用get_messages_by_id工具查阅消息ID对应的消息内容及其上下文。使用get_messages工具的with_id参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
+[:face 表情名称] 平台专有表情符号。可用的表情名称有： {' '.join(CQFACE.values())}
+[:unsupported] 暂时不支持解读的消息，等待后续升级。
+
 如果你想要发送一些消息，就使用send工具。
 当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以调用idle暂停一会。你的精力有限，连续进行10次操作左右，需要调用idle暂停几分钟。
 暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分至甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。

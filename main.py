@@ -1,70 +1,19 @@
 from typing import List
-from ncatbot.core import BotClient
+from ncatbot.core import BotClient, MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
 from graph import make_agent, config as agentconfig
 import asyncio
 from datetime import datetime
 from pytz import timezone
-from ncatbot.utils import get_log
 from ncatbot.core.api import NapCatAPIError
-from dotenv import load_dotenv
 import os, signal
 from langchain.messages import AIMessage, ToolMessage, HumanMessage
 from time import time
-from os import environ
+from msgfmt import msglfmt, parse_msg
+from config import *
 
-load_dotenv()
 logger = get_log(__name__)
-
-USR = environ["Q_USR"]
-NICK = environ["Q_NICK"]
-GRP = environ["Q_GRP"]
-CON = environ["Q_CON"]
-TZ = environ["TZ"]
-
-
-def msgconv(event: GroupMessageEvent):
-    return {
-        "from": {"user": event.sender.user_id, "nick": event.sender.nickname},
-        "content": event.raw_message,
-        "date": datetime.fromtimestamp(event.time, tz=timezone(TZ)).isoformat(
-            timespec="seconds"
-        ),
-    }
-
-
-def msglfmt(events: List[GroupMessageEvent], with_id: bool | str = False):
-    d = None
-    t = None
-    fro = None
-    l = []
-    for e in events:
-        infoln = ""
-        dt = datetime.fromtimestamp(e.time, tz=timezone(TZ))
-        ed = dt.date().isoformat()
-        et = dt.timetz().isoformat(timespec="minutes")[:5]
-        if ed != d:
-            infoln += f"[on {ed} {et}]"
-        elif et != t:
-            infoln += f"[on {et}]"
-        d, t = ed, et
-        if e.sender.user_id != fro:
-            if e.sender.user_id == USR:
-                infoln += f"[from ME {e.sender.user_id} ({e.sender.nickname})]"
-            else:
-                infoln += f"[from {e.sender.user_id} ({e.sender.nickname})]"
-        fro = e.sender.user_id
-        if len(infoln) > 0:
-            l.append(infoln)
-        msgln = ""
-        if with_id == True:
-            msgln += f"[id {e.message_id}]"
-        elif with_id == e.message_id:
-            msgln += "[this]"
-        msgln += e.raw_message
-        l.append(msgln)
-    return "\n".join(l)
 
 
 class App:
@@ -80,7 +29,7 @@ class App:
     async def send(self, content: str, target=GRP):
         logger.info(f"send: {content}")
         try:
-            await self.qbot.api.send_group_text(target, content)
+            await self.qbot.api.send_group_msg(target, parse_msg(content).to_list())
             return "[success]"
         except NapCatAPIError as e:
             logger.warning(f"get_message error: {e}")
