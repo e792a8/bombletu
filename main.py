@@ -168,7 +168,7 @@ def make_agent_loop(app: App):
             except BaseException as e:
                 logger.error(f"agent loop exception: {e}")
                 await app.send(
-                    "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI."
+                    "Someone tell [:at 1571224208] there is a problem with my AI."
                 )
                 await app.send(str(e), target=CON)
 
