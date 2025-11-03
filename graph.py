@@ -70,9 +70,10 @@ def date() -> str:
 
 
 @tool
-async def send(content: str) -> str:  # FIXME when #6318 is ok
+async def send(cfg: RunnableConfig, content: str) -> str:  # FIXME when #6318 is ok
     """在群里发送消息。"""
-    return await get_app().send(content)  # type: ignore
+    app = cfg["configurable"]["app"]  # type: ignore
+    return await app.send(content)
 
 
 @tool
@@ -84,33 +85,38 @@ def idle(minutes: int) -> int:
 
 
 @tool
-async def get_unread(limit: int) -> str:
+async def get_unread(cfg: RunnableConfig, limit: int) -> str:
     """获取未读消息列表。
     参数limit表示限制返回的消息数量。
     返回的消息列表末尾带有指示 [unread 数量] 表示这些消息后剩余未读消息数量。
     """
-    return await get_app().get_unread(limit)
+    app = cfg["configurable"]["app"]  # type: ignore
+    return await app.get_unread(limit)
 
 
 @tool
 async def get_messages(
-    fro: int, to: int, with_id: bool = False
+    cfg: RunnableConfig, fro: int, to: int, with_id: bool = False
 ) -> str:  # FIXME when #6318 is ok
     """查阅消息记录。
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
     例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。"""
-    return await get_app().get_messages(fro, to, with_id)
+    app = cfg["configurable"]["app"]  # type: ignore
+    return await app.get_messages(fro, to, with_id)
     # bigmodel.cn传dict会报错，ai.gitee.com就没事，最好兼一下
 
 
 @tool
-async def get_messages_by_id(id: str, before: int = 0, after: int = 0) -> str:
+async def get_messages_by_id(
+    cfg: RunnableConfig, id: str, before: int = 0, after: int = 0
+) -> str:
     """按消息ID查阅消息记录。
     参数id为查阅的目标消息ID，before为在目标消息前附带的消息数量，after为在目标消息后附带的消息数量。
     返回的消息列表中，目标消息的行首带有指示 [this] ，该条消息的ID即为查询的ID。
     """
-    return await get_app().get_messages_by_id(id, before, after)
+    app = cfg["configurable"]["app"]  # type: ignore
+    return await app.get_messages_by_id(id, before, after)
 
 
 # model = ChatOllama(
@@ -183,7 +189,7 @@ async def tool_node(state: dict, config: RunnableConfig, runtime: Runtime):
         #     store=runtime.store,
         # )
         # args["rt"] = rt
-        observation = await tool.ainvoke(tool_call["args"])
+        observation = await tool.ainvoke(tool_call["args"], config)
         result.append(ToolMessage(observation, tool_call_id=tool_call["id"]))
     return {"messages": result}
 
@@ -242,10 +248,8 @@ agent = make_agent()
 # )
 
 
-config = RunnableConfig(configurable={"thread_id": 1})
-
-
 def main():
+    config = RunnableConfig(configurable={"thread_id": 1, "app": None})
     resp = agent.invoke(
         {},  # type: ignore
         config=config,

@@ -2,13 +2,14 @@ from typing import List
 from ncatbot.core import BotClient, MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
-from graph import make_agent, config as agentconfig
+from graph import make_agent
 import asyncio
 from datetime import datetime
 from pytz import timezone
 from ncatbot.core.api import NapCatAPIError
 import os, signal
 from langchain.messages import AIMessage, ToolMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from time import time
 from msgfmt import msglfmt, parse_msg
 from config import *
@@ -76,9 +77,6 @@ class App:
         return "\n".join([msglfmt(l), f"[unread {len(self.unread)}]"])
 
     def __init__(self):
-        global agentconfig  # FIXME when #6318 is ok
-        agentconfig["configurable"]["app"] = self  # type: ignore
-
         async def group_message_handler(event: GroupMessageEvent):
             if event.group_id == GRP:
                 await self.newmsgchan.put(event)
@@ -130,6 +128,7 @@ def check_idle_call(ivk):
 async def agent_loop(app: App):
     logger.info("agent loop starting")
     agent = make_agent()
+    agentconfig = RunnableConfig(configurable={"thread_id": 1, "app": app})
     msg_inject = []
     while True:
         logger.info("agent invoking")
