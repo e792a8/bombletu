@@ -27,39 +27,6 @@ class App:
             if time() > target_time:
                 return None
 
-    async def send(self, content: str, target=GRP):
-        logger.info(f"send: {content}")
-        try:
-            await self.qbot.api.send_group_msg(target, parse_msg(content).to_list())
-            return "[success]"
-        except NapCatAPIError as e:
-            logger.warning(f"get_message error: {e}")
-            return "[error 软件暂时故障]"
-
-    async def get_messages(self, fro: int, to: int, with_id: bool = False) -> str:
-        logger.info(f"get_messages: {fro}, {to}, {with_id}")
-        try:
-            return msglfmt(
-                (await self.qbot.api.get_group_msg_history(GRP, 0, fro))[
-                    : fro - to + 1
-                ],
-                with_id,
-            )
-        except NapCatAPIError as e:
-            logger.warning(f"get_message error: {e}")
-            return "[error 软件暂时故障]"
-
-    async def get_messages_by_id(self, id: str, before: int, after: int) -> str:
-        api = self.qbot.api
-        try:
-            bef = await api.get_group_msg_history(GRP, id, before + 1, True)
-            aft = await api.get_group_msg_history(GRP, id, after + 1, False)
-            lst = bef + aft[1:]
-            return msglfmt(lst, id)
-        except NapCatAPIError as e:
-            logger.error(f"{e}")
-            return "[error 软件暂时故障]"
-
     async def collect_unread(self) -> int:
         collected = 0
         while ev := await self.newmsgchan.take(timeout=0):
@@ -128,11 +95,13 @@ def check_idle_call(ivk):
 async def agent_loop(app: App):
     logger.info("agent loop starting")
     agent = make_agent()
-    agentconfig = RunnableConfig(configurable={"thread_id": 1, "app": app})
+    agentconfig = RunnableConfig(
+        configurable={"thread_id": 1, "app": app, "qapi": app.qbot.api}
+    )
     msg_inject = []
     while True:
         logger.info("agent invoking")
-        ret = await agent.ainvoke({"messages": msg_inject}, config=agentconfig, context=app, print_mode="updates")  # type: ignore
+        ret = await agent.ainvoke({"messages": msg_inject}, config=agentconfig, print_mode="updates")  # type: ignore
         logger.debug(f"agent return: {ret}")
         idle_id, mins = check_idle_call(ret)
         if idle_id:
@@ -166,10 +135,11 @@ def make_agent_loop(app: App):
                 await agent_loop(app)
             except BaseException as e:
                 logger.error(f"agent loop exception: {e}")
-                await app.send(
-                    "Someone tell [:at 1571224208] there is a problem with my AI."
+                await app.qbot.api.send_group_text(
+                    GRP,
+                    "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI.",
                 )
-                await app.send(str(e), target=CON)
+                await app.qbot.api.send_group_text(CON, f"{GRP} {e}")
 
     return agent_loop_wrapper
 
