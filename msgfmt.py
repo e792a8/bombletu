@@ -78,8 +78,8 @@ def format_msg(msg: MessageArray) -> str:
             m += f"[:face {format_face(seg.id)}]"
         elif isinstance(seg, Reply):
             m += f"[:refer {seg.id}]"
-        # elif isinstance(seg, Image):
-        #     m += f"[:image {seg.file_id}]"
+        elif isinstance(seg, Image):
+            m += f"[:image {seg.file}]"
         # elif isinstance(seg, Video):
         #     m += f"[:video {seg.file_id}]"
         # elif isinstance(seg, Forward):

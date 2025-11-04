@@ -3,8 +3,12 @@ from datetime import datetime
 import pytz
 from langchain_core.runnables import RunnableConfig
 from config import *
+from os import environ
 from ncatbot.core.api import BotAPI, NapCatAPIError
 from msgfmt import msglfmt, parse_msg
+from langchain_openai import ChatOpenAI
+from langchain.messages import HumanMessage
+import subprocess
 
 logger = get_log(__name__)
 
@@ -80,4 +84,55 @@ async def get_messages_by_id(
         return "[error 软件暂时故障]"
 
 
-ALL_TOOLS = [date, send, get_unread, get_messages, get_messages_by_id]
+visual_model = ChatOpenAI(
+    temperature=0.6,
+    model=environ["VIS_MODEL"],
+    api_key=environ["VIS_API_KEY"],  # type:ignore
+    base_url=environ["VIS_BASE_URL"],
+)
+
+
+@tool
+async def ask_image(
+    cfg: RunnableConfig, file_name: str, prompt="群友发了这个图，什么意思？"
+) -> str:
+    """向视觉模型询问关于某个图像的问题。
+    参数file_name是图像的文件名。参数prompt是询问的问题，默认为“群友发了这个图，什么意思？”。
+    """
+    try:
+        img = await get_api(cfg).get_image(file=file_name)
+    except BaseException as e:
+        logger.error(f"ask_image 图像获取失败 {e}")
+        return "[error 图像打开失败]"
+    fpath = img.file
+    fpath = fpath.replace(
+        "/app/.config/QQ/", "./data/napcat/config_qq/"
+    )  # NOTE napcat dependent
+    b64img = subprocess.run(
+        ["sudo", "base64", fpath], capture_output=True, text=True
+    ).stdout.strip()
+    msg = HumanMessage(
+        content=[
+            {"type": "text", "text": prompt},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64img}"},
+            },
+        ]
+    )
+    try:
+        ret = await visual_model.ainvoke([msg])
+    except BaseException as e:
+        logger.error(f"模型调用出错 {e}")
+        return "[error 模型调用出错]"
+    return str(ret.content)
+
+
+ALL_TOOLS = [
+    date,
+    send,
+    get_unread,
+    get_messages,
+    get_messages_by_id,
+    ask_image,
+]
