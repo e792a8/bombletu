@@ -43,7 +43,7 @@ SYSTEM_PROMPT = f"""
 消息内容中有一些特殊元素，你在发送消息时也可以使用：
 [:at 账号] 提及某人， [:at ALL] 提及群中所有人。如果是提及你的，则在“at”后会附加“ME”。
 [:refer 消息ID] 引用某条消息。此元素每条消息中只能使用最多1次，且应放在消息开头。使用get_messages_by_id工具查阅消息ID对应的消息内容及其上下文。使用get_messages工具的with_id参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
-[:face 表情名称] 平台专有表情符号。可用的表情名称有： {' '.join(CQFACE.values())}
+[:face 表情名称] 平台专有表情符号，可用的表情名称有： {' '.join(CQFACE.values())} 。通用emoji仍可直接使用。
 [:unsupported] 暂时不支持解读的消息，等待后续升级。
 
 如果你想要发送一些消息，就使用send工具。
