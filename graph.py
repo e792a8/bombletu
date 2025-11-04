@@ -1,7 +1,8 @@
 from langchain.tools import tool
+from langgraph.prebuilt.tool_node import ToolNode
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.runtime import Runtime
+from langchain.tools import ToolRuntime
 from langgraph.graph import add_messages
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from os import environ
@@ -58,10 +59,6 @@ SYSTEM_PROMPT = f"""
 # 初始时你精力足够，请你直接开始进行操作。
 
 
-def get_app():
-    return config["configurable"]["app"]  # type: ignore
-
-
 @tool
 def date() -> str:
     """获取当前的本地日期和时间。"""
@@ -77,11 +74,11 @@ async def send(cfg: RunnableConfig, content: str) -> str:  # FIXME when #6318 is
 
 
 @tool
-def idle(minutes: int) -> int:
+def idle(minutes: int) -> str:
     """暂停一段时间，参数为分钟数。
     暂停可以被一些特别事件中断，使你提前恢复运行。
     重要：必须单独调用，不可与其他工具并行调用。"""
-    return minutes
+    return "Idle finished."
 
 
 @tool
@@ -172,28 +169,6 @@ async def llm_call(state: dict):
     }
 
 
-async def tool_node(state: dict, config: RunnableConfig, runtime: Runtime):
-    """Performs the tool call"""
-
-    result = []
-    for tool_call in state["messages"][-1].tool_calls:
-        tool = tools_by_name[tool_call["name"]]
-        # rt = ToolRuntime() # BUG: hand-made langgraph does not support ToolRuntime injection. langgraph#6318
-        # args = tool_call["args"]
-        # rt = ToolRuntime(
-        #     state=state,
-        #     context=runtime.context,
-        #     stream_writer=runtime.stream_writer,
-        #     tool_call_id=tool_call["id"],
-        #     config=config,
-        #     store=runtime.store,
-        # )
-        # args["rt"] = rt
-        observation = await tool.ainvoke(tool_call["args"], config)
-        result.append(ToolMessage(observation, tool_call_id=tool_call["id"]))
-    return {"messages": result}
-
-
 async def inform_event(state: BotState):
     msgs = []
     if intr := await config["configurable"]["app"].wait_intr(0):  # type: ignore
@@ -229,7 +204,7 @@ def make_agent():
     # Add nodes
     builder.add_node("context_reduce", context_reduce)
     builder.add_node("llm_call", llm_call)  # type: ignore
-    builder.add_node("tool_node", tool_node)  # type: ignore
+    builder.add_node("tool_node", ToolNode(tools))  # type: ignore
 
     # Add edges to connect nodes
     builder.add_edge(START, "context_reduce")
