@@ -2,7 +2,7 @@ from typing import List
 from ncatbot.core import BotClient, MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
-from graph import make_agent
+from graph import make_agent, make_chroma
 import asyncio
 from datetime import datetime
 from pytz import timezone
@@ -10,6 +10,10 @@ from ncatbot.core.api import NapCatAPIError
 import os, signal
 from langchain.messages import AIMessage, ToolMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_chroma import Chroma
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.checkpoint.memory import InMemorySaver
 from time import time
 from msgfmt import msglfmt, parse_msg
 from config import *
@@ -92,12 +96,7 @@ def check_idle_call(ivk):
     return None, 0
 
 
-async def agent_loop(app: App):
-    logger.info("agent loop starting")
-    agent = make_agent()
-    agentconfig = RunnableConfig(
-        configurable={"thread_id": 1, "app": app, "qapi": app.qbot.api}
-    )
+async def agent_loop(app: App, agent: CompiledStateGraph, agentconfig: RunnableConfig):
     msg_inject = []
     while True:
         logger.info("agent invoking")
@@ -131,8 +130,23 @@ def make_agent_loop(app: App):
     async def agent_loop_wrapper(_):
         while True:
             await asyncio.sleep(10)
+            logger.info("agent loop starting")
             try:
-                await agent_loop(app)
+                # async with AsyncSqliteSaver.from_conn_string(
+                #     DATADIR + "/ckpt.sqlite"
+                # ) as ckptr:
+                ckptr = InMemorySaver()
+                chroma = make_chroma(GRP, DATADIR + "/chroma")
+                agent = make_agent(ckptr)
+                agentconfig = RunnableConfig(
+                    configurable={
+                        "thread_id": GRP,
+                        "app": app,
+                        "qapi": app.qbot.api,
+                        "chroma": chroma,
+                    }
+                )
+                await agent_loop(app, agent, agentconfig)
             except BaseException as e:
                 logger.error(f"agent loop exception: {e}")
                 await app.qbot.api.send_group_text(

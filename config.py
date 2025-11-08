@@ -9,5 +9,6 @@ NICK = environ["Q_NICK"]
 GRP = environ["Q_GRP"]
 CON = environ["Q_CON"]
 TZ = environ["TZ"]
+DATADIR = environ["DATADIR"]
 
-__all__ = ["USR", "NICK", "GRP", "CON", "TZ", "get_log"]
+__all__ = ["USR", "NICK", "GRP", "CON", "TZ", "DATADIR", "get_log"]

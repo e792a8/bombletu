@@ -1,3 +1,4 @@
+from typing import List
 from langchain.tools import tool
 from datetime import datetime
 import pytz
@@ -5,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from config import *
 from os import environ
 from ncatbot.core.api import BotAPI, NapCatAPIError
+from langchain_chroma import Chroma
 from msgfmt import msglfmt, parse_msg
 from langchain_openai import ChatOpenAI
 from langchain.messages import HumanMessage
@@ -15,6 +17,10 @@ logger = get_log(__name__)
 
 def get_api(cfg: RunnableConfig) -> BotAPI:
     return cfg["configurable"]["qapi"]  # type: ignore
+
+
+def get_chroma(cfg: RunnableConfig) -> Chroma:
+    return cfg["configurable"]["chroma"]  # type: ignore
 
 
 @tool
@@ -128,6 +134,42 @@ async def ask_image(
     return str(ret.content)
 
 
+@tool
+async def store_memory(cfg: RunnableConfig, contents: str) -> str:
+    """存入记忆。
+    参数contents是记忆内容，每行将作为单独一项条目存入记忆。
+    返回存入条目对应的条目ID，每行一个。"""
+    cr = get_chroma(cfg)
+    ids = await cr.aadd_texts(contents.split("\n"))
+    logger.info(f"store memory: {ids}")
+    return "\n".join(ids)
+
+
+@tool
+async def query_memory(
+    cfg: RunnableConfig, query: str, k=4, with_id: bool = False
+) -> str:
+    """查询记忆。
+    参数query是查询目标。k为返回的条目个数，默认为4。with_id表示返回时是否附带记忆ID。
+    返回格式：每行一个条目，如果with_id为真，则每个条目开头附带 [id 记忆ID] 。"""
+    cr = get_chroma(cfg)
+    res = await cr.asimilarity_search(query, k=k)
+    ret = "\n".join(
+        map(lambda x: (f"[id {x.id}]" if with_id else "") + x.page_content, res)
+    )
+    return ret
+
+
+@tool
+async def delete_memory(cfg: RunnableConfig, ids: str) -> str:
+    """删除记忆条目。
+    参数ids为要删除的条目ID列表，每行一个。条目ID可使用query_memory工具的with_id参数获取。"""
+    idl = ids.split("\n")
+    cr = get_chroma(cfg)
+    await cr.adelete(idl)
+    return "[success]"
+
+
 ALL_TOOLS = [
     date,
     send,
@@ -135,4 +177,7 @@ ALL_TOOLS = [
     get_messages,
     get_messages_by_id,
     ask_image,
+    store_memory,
+    query_memory,
+    delete_memory,
 ]

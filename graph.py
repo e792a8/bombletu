@@ -1,9 +1,12 @@
 from langchain.tools import tool
 from langgraph.prebuilt.tool_node import ToolNode
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_chroma import Chroma
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph import add_messages
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.graph import add_messages, MessagesState
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langchain_core.embeddings import Embeddings
 from os import environ
 from langchain.messages import (
     AnyMessage,
@@ -19,6 +22,8 @@ from langchain_core.runnables import RunnableConfig
 from config import *
 from cqface import CQFACE
 from tools import ALL_TOOLS
+import httpx
+import asyncio
 
 logger = get_log(__name__)
 
@@ -32,7 +37,9 @@ logger = get_log(__name__)
 # 你可以使用get_unread和get_messages工具获取群消息。
 SYSTEM_PROMPT = f"""
 你是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
-你比较低调，且对群友尚不太熟悉，频繁向群友直接发问也比较打扰，因此你不会频繁发送消息，主要以观察群友对话和了解群友为主。你希望你的发言以精练而带有一点冷幽默为宜，偶尔假装不经意地扮演一只可爱的猫娘。
+你比较低调，且对群友尚不太熟悉，频繁向群友直接发问也比较打扰，因此你不会频繁发送消息，主要以观察群友对话和了解群友为主。你希望你的发言习惯和内容主题向群友接近，但保持一点简要精练、带有一点冷幽默的特性。
+
+你需要积极使用长期记忆工具 store_memory, query_memory, delete_memory 来记录、回想和维护你认为重要的信息，例如群友的相关情况、你与群友互动过程中令你印象深刻的事情等。
 
 你可以用get_unread工具获取新接收的消息或用get_messages工具获取历史消息。
 你的账号是“{USR}”，昵称是“{NICK}”，消息记录里会出现你自己的消息，注意分别。
@@ -51,7 +58,7 @@ SYSTEM_PROMPT = f"""
 在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
 不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自己调用工具和决定要做的事。
 """.strip()
-# 现在你正在测试中，你需要直接执行的任务是：查阅群消息，找到最新一条带图片的消息，理解图片内容，引用这条消息并发表评论，然后暂停30分钟。
+# 现在你正在测试中，你需要直接执行的任务是：使用长期记忆工具记录“我家在长春。”，然后暂停30分钟。
 # 现在你正在进行测试，你要直接对群里最后第4条消息回复“测试”，然后暂停30分钟。
 # 现在你正在测试中，接下来你要直接调用get_messages(fro=80,to=61)读取消息记录，对这段记录进行总结，调用send将总结的内容发出，然后循环进行：调用idle(minutes=1)暂停1分钟，之后判断暂停是正常结束还是被事件中断，将你的判断用send发出。
 # 初始时你精力足够，请你直接开始进行操作。
@@ -83,8 +90,8 @@ tools_by_name = {tool.name: tool for tool in tools}
 model_with_tools = llm.bind_tools(tools)
 
 
-class BotState(TypedDict):
-    messages: Annotated[list[AnyMessage], add_messages]
+class BotState(MessagesState):
+    pass
 
 
 INITIAL_PROMPTS = [
@@ -137,9 +144,61 @@ async def should_continue(state: BotState) -> Literal["tool_node", END]:  # type
     return "tool_node"
 
 
-def make_agent():
-    ckptr = InMemorySaver()
+class GiteeAIEmbeddings(Embeddings):
+    def __init__(
+        self, model: str, base_url: str, api_key: str, dimensions: int
+    ) -> None:
+        super().__init__()
+        self.model = model
+        self.base_url = base_url
+        self.api_key = api_key
+        self.dimensions = dimensions
 
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return asyncio.run(self.aembed_documents(texts))
+
+    def embed_query(self, text: str) -> list[float]:
+        return asyncio.run(self.aembed_query(text))
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return (await self.aembed_documents([text]))[0]
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        async with httpx.AsyncClient() as client:
+            ret = []
+            for t in texts:
+                resp = await client.post(
+                    "https://ai.gitee.com/v1/embeddings",
+                    timeout=30,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + self.api_key,
+                    },
+                    json={
+                        "model": self.model,
+                        "input": t,
+                        "encoding_format": "float",
+                        "dimensions": self.dimensions,
+                    },
+                )
+                ret.append(resp.json()["data"][0]["embedding"])
+        return ret
+
+
+def make_chroma(col: str, persist_dir: str | None = None):
+    # embed = OpenAIEmbeddings(
+    embed = GiteeAIEmbeddings(
+        dimensions=1024,
+        model=environ["EMBED_MODEL"],
+        base_url=environ["EMBED_BASE_URL"],
+        api_key=environ["EMBED_API_KEY"],  # type: ignore
+    )
+    return Chroma(col, embedding_function=embed, persist_directory=persist_dir)
+
+
+def make_agent(
+    ckptr: BaseCheckpointSaver = InMemorySaver(), store_dir: str | None = None
+):
     # Build workflow
     builder = StateGraph(BotState)
 
@@ -166,13 +225,11 @@ agent = make_agent()
 
 
 def main():
-    config = RunnableConfig(configurable={"thread_id": 1, "app": None})
-    resp = agent.invoke(
-        {},  # type: ignore
-        config=config,
-        print_mode="values",
-    )
-    print(resp)
+    from ncatbot.utils.logger import setup_logging
+
+    setup_logging()
+    cr = make_chroma("test")
+    cr.add_texts("我家在长春。")
 
 
 if __name__ == "__main__":
