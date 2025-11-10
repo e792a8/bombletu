@@ -147,7 +147,7 @@ async def store_memory(cfg: RunnableConfig, contents: str) -> str:
 
 @tool
 async def query_memory(
-    cfg: RunnableConfig, query: str, k=4, with_id: bool = False
+    cfg: RunnableConfig, query: str, k: int = 4, with_id: bool = False
 ) -> str:
     """查询记忆。
     参数query是查询目标。k为返回的条目个数，默认为4。with_id表示返回时是否附带记忆ID。
