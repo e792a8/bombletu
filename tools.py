@@ -62,9 +62,10 @@ async def get_messages(
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。"""
     logger.info(f"get_messages: {fro}, {to}, {with_id}")
     try:
-        return msglfmt(
+        return await msglfmt(
             (await get_api(cfg).get_group_msg_history(GRP, 0, fro))[: fro - to + 1],
             with_id,
+            get_api(cfg),
         )
     except NapCatAPIError as e:
         logger.warning(f"get_message error: {e}")
@@ -84,7 +85,7 @@ async def get_messages_by_id(
         bef = await api.get_group_msg_history(GRP, id, before + 1, True)
         aft = await api.get_group_msg_history(GRP, id, after + 1, False)
         lst = bef + aft[1:]
-        return msglfmt(lst, id)
+        return await msglfmt(lst, id, api)
     except NapCatAPIError as e:
         logger.error(f"{e}")
         return "[error 软件暂时故障]"

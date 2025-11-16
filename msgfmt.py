@@ -1,6 +1,8 @@
+import asyncio
 from datetime import datetime
 from pytz import timezone
 from typing import List
+from ncatbot.core.api import BotAPI, NapCatAPIError
 from ncatbot.core import MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from ncatbot.core.event.message_segment.message_segment import (
@@ -65,7 +67,7 @@ def parse_msg(msg: str) -> MessageArray:
     return m
 
 
-def format_msg(msg: MessageArray) -> str:
+async def format_msg(msg: MessageArray, api: BotAPI) -> str:
     m = ""
     for seg in msg:
         if isinstance(seg, PlainText):
@@ -73,7 +75,13 @@ def format_msg(msg: MessageArray) -> str:
         elif isinstance(seg, AtAll):
             m += "[:at ALL]"
         elif isinstance(seg, At):
-            m += f"[:at ME {seg.qq}]" if seg.qq == USR else f"[:at {seg.qq}]"
+            try:
+                u = await api.get_group_member_info(GRP, seg.qq)
+                nick = u.card or u.nickname
+            except NapCatAPIError as e:
+                logger.error(f"napcat api: {e}")
+                nick = ""
+            m += f"[:at {'ME ' if seg.qq == USR else ''}{seg.qq} ({nick})]"
         elif isinstance(seg, Face):
             m += f"[:face {format_face(seg.id)}]"
         elif isinstance(seg, Reply):
@@ -89,7 +97,7 @@ def format_msg(msg: MessageArray) -> str:
     return m
 
 
-def msglfmt(events: List[GroupMessageEvent], with_id: bool | str = False):
+async def msglfmt(events: List[GroupMessageEvent], with_id: bool | str, api: BotAPI):
     d = None
     t = None
     fro = None
@@ -119,16 +127,16 @@ def msglfmt(events: List[GroupMessageEvent], with_id: bool | str = False):
             msgln += f"[id {e.message_id}]"
         elif with_id == e.message_id:
             msgln += "[this]"
-        msgln += format_msg(e.message)
+        msgln += await format_msg(e.message, api)
         l.append(msgln)
     return "\n".join(l)
 
 
 def main():
     msg = "[:refer 353734][:at 3266073720][:at ALL]haha[:face 11]"
-    msg2 = format_msg(parse_msg(msg))
+    # msg2 = asyncio.run(format_msg(parse_msg(msg), None))
     print(msg)
-    print(msg2)
+    # print(msg2)
 
 
 if __name__ == "__main__":

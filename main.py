@@ -45,7 +45,9 @@ class App:
             if len(self.unread) < 1:
                 break
             l.append(self.unread.pop(0))
-        return "\n".join([msglfmt(l), f"[unread {len(self.unread)}]"])
+        return "\n".join(
+            [await msglfmt(l, False, self.qbot.api), f"[unread {len(self.unread)}]"]
+        )
 
     def __init__(self):
         async def group_message_handler(event: GroupMessageEvent):
