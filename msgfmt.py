@@ -36,9 +36,11 @@ def format_face(id: str):
 
 
 def parse_face(name: str):
+    if name.isdigit():
+        return name
     if not name in RCQFACE.keys():
         logger.warning(f"unknown face name {name}")
-        return "10068"  # 问号
+        return None
     return RCQFACE[name]
 
 
@@ -58,12 +60,14 @@ def parse_msg(msg: str) -> MessageArray:
             else:
                 m += At(sp[1])
         elif cmd == "face":
-            m += Face(parse_face(sp[1]))
+            fid = parse_face(sp[1])
+            if fid is not None:
+                m += Face(fid)
         elif cmd == "refer":
             m += Reply(sp[1])
         else:
             logger.warning(f"unknown seg: {seg}")
-            m += PlainText(seg)
+            m += PlainText(seg[2:-1])
     return m
 
 
