@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from langchain.tools import tool
 from langgraph.prebuilt.tool_node import ToolNode
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -21,9 +22,11 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.runnables import RunnableConfig
 from config import *
 from cqface import CQFACE
-from tools import ALL_TOOLS
-import httpx
-import asyncio
+from adapt import GiteeAIEmbeddings
+from app import App
+from mem0 import Memory
+from .tools import ALL_TOOLS
+from .types import BotContext, BotState
 
 logger = get_log(__name__)
 
@@ -56,10 +59,11 @@ SYSTEM_PROMPT = f"""
 当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以调用idle暂停一会。你的精力有限，连续进行10次操作左右，需要调用idle暂停几分钟。
 暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分至甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。
 参与讨论发言时注意话题时效，多注意最新的消息记录，不要对着久远之前的消息记录发不合时宜的回复。
-在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
 你使用send工具发出的消息不会进行markdown渲染，不要试图使用markdown标记设置内容格式。
-不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自己调用工具和决定要做的事。
+在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
+不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自主决定要做的事和调用工具。
 """.strip()
+# 与当前上下文相关的长期记忆也会通过user角色消息输入，供你参考。
 # 现在你正在测试中，你需要直接执行：获取群里最新20条消息，然后暂停30分钟。
 # 现在你正在进行测试，你要直接对群里最后第4条消息回复“测试”，然后暂停30分钟。
 # 现在你正在测试中，接下来你要直接调用get_messages(fro=80,to=61)读取消息记录，对这段记录进行总结，调用send将总结的内容发出，然后循环进行：调用idle(minutes=1)暂停1分钟，之后判断暂停是正常结束还是被事件中断，将你的判断用send发出。
@@ -92,10 +96,6 @@ tools_by_name = {tool.name: tool for tool in tools}
 model_with_tools = llm.bind_tools(tools)
 
 
-class BotState(MessagesState):
-    pass
-
-
 INITIAL_PROMPTS = [
     SystemMessage(SYSTEM_PROMPT),
     HumanMessage(
@@ -112,21 +112,12 @@ async def context_reduce(state: BotState):
     return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *new_msgs]}
 
 
-async def llm_call(state: dict):
+async def llm_call(state: BotState):
     """LLM decides whether to call a tool or not"""
 
     return {
         "messages": [model_with_tools.invoke(INITIAL_PROMPTS + state["messages"])],
     }
-
-
-async def inform_event(state: BotState):
-    msgs = []
-    if intr := await config["configurable"]["app"].wait_intr(0):  # type: ignore
-        msgs.append(HumanMessage(f"[notify {intr}]"))
-    if col := await config["configurable"]["app"].collect_unread():  # type: ignore
-        msgs.append(HumanMessage(f"[event 收到{col}条新消息]"))
-    return {"messages": msgs}
 
 
 async def should_continue(state: BotState) -> Literal["tool_node", END]:  # type: ignore
@@ -146,63 +137,43 @@ async def should_continue(state: BotState) -> Literal["tool_node", END]:  # type
     return "tool_node"
 
 
-class GiteeAIEmbeddings(Embeddings):
-    def __init__(
-        self, model: str, base_url: str, api_key: str, dimensions: int
-    ) -> None:
-        super().__init__()
-        self.model = model
-        self.base_url = base_url
-        self.api_key = api_key
-        self.dimensions = dimensions
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return asyncio.run(self.aembed_documents(texts))
-
-    def embed_query(self, text: str) -> list[float]:
-        return asyncio.run(self.aembed_query(text))
-
-    async def aembed_query(self, text: str) -> list[float]:
-        return (await self.aembed_documents([text]))[0]
-
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        async with httpx.AsyncClient() as client:
-            ret = []
-            for t in texts:
-                resp = await client.post(
-                    "https://ai.gitee.com/v1/embeddings",
-                    timeout=30,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + self.api_key,
-                    },
-                    json={
-                        "model": self.model,
-                        "input": t,
-                        "encoding_format": "float",
-                        "dimensions": self.dimensions,
-                    },
-                )
-                ret.append(resp.json()["data"][0]["embedding"])
-        return ret
+embed = GiteeAIEmbeddings(
+    dimensions=1024,
+    model=environ["EMBED_MODEL"],
+    base_url=environ["EMBED_BASE_URL"],
+    api_key=environ["EMBED_API_KEY"],  # type: ignore
+)
 
 
 def make_chroma(col: str, persist_dir: str | None = None):
     # embed = OpenAIEmbeddings(
-    embed = GiteeAIEmbeddings(
-        dimensions=1024,
-        model=environ["EMBED_MODEL"],
-        base_url=environ["EMBED_BASE_URL"],
-        api_key=environ["EMBED_API_KEY"],  # type: ignore
-    )
     return Chroma(col, embedding_function=embed, persist_directory=persist_dir)
+
+
+def make_mem0() -> Memory:
+    mem0_config = {
+        "vector_store": {
+            "provider": "langchain",
+            "config": {"client": make_chroma(GRP, DATADIR + "/chroma")},
+        },
+        "llm": {"provider": "langchain", "config": {"model": llm}},
+        "embedder": {"provider": "langchain", "config": {"model": embed}},
+        "reranker": {
+            "provider": "llm_reranker",
+            "config": {
+                "llm": {"provider": "langchain", "config": {"model": llm}},
+            },
+        },
+    }
+    mem = Memory.from_config(mem0_config)
+    return mem
 
 
 def make_agent(
     ckptr: BaseCheckpointSaver = InMemorySaver(), store_dir: str | None = None
 ):
     # Build workflow
-    builder = StateGraph(BotState)
+    builder = StateGraph(BotState, BotContext)
 
     # Add nodes
     builder.add_node("context_reduce", context_reduce)
@@ -230,8 +201,8 @@ def main():
     from ncatbot.utils.logger import setup_logging
 
     setup_logging()
-    cr = make_chroma("test")
-    cr.add_texts("我家在长春。")
+    # cr = make_chroma("test")
+    # cr.add_texts("我家在长春。")
 
 
 if __name__ == "__main__":

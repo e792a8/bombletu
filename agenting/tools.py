@@ -1,6 +1,7 @@
-from typing import List
-from langchain.tools import tool
+from typing import List, TYPE_CHECKING
+from langchain.tools import tool, ToolRuntime
 from datetime import datetime
+from langchain_core.tools import BaseTool, BaseToolkit
 import pytz
 from langchain_core.runnables import RunnableConfig
 from config import *
@@ -11,16 +12,12 @@ from msgfmt import msglfmt, parse_msg
 from langchain_openai import ChatOpenAI
 from langchain.messages import HumanMessage
 import subprocess
+from app import App
+from .types import BotContext, BotState
 
 logger = get_log(__name__)
 
-
-def get_api(cfg: RunnableConfig) -> BotAPI:
-    return cfg["configurable"]["qapi"]  # type: ignore
-
-
-def get_chroma(cfg: RunnableConfig) -> Chroma:
-    return cfg["configurable"]["chroma"]  # type: ignore
+Rt = ToolRuntime[BotContext, BotState]
 
 
 @tool
@@ -31,11 +28,11 @@ def date() -> str:
 
 
 @tool
-async def send(cfg: RunnableConfig, content: str) -> str:
+async def send(rt: ToolRuntime, content: str) -> str:
     """在群里发送消息。"""
     logger.info(f"send: {content}")
     try:
-        await get_api(cfg).send_group_msg(GRP, parse_msg(content).to_list())
+        await rt.context.app.qapi.send_group_msg(GRP, parse_msg(content).to_list())
         return "[success]"
     except NapCatAPIError as e:
         logger.warning(f"get_message error: {e}")
@@ -43,18 +40,18 @@ async def send(cfg: RunnableConfig, content: str) -> str:
 
 
 @tool
-async def get_unread(cfg: RunnableConfig, limit: int) -> str:
+async def get_unread(rt: ToolRuntime, limit: int) -> str:
     """获取未读消息列表。
     参数limit表示限制返回的消息数量。
     返回的消息列表末尾带有指示 [unread 数量] 表示这些消息后剩余未读消息数量。
     """
-    app = cfg["configurable"]["app"]  # type: ignore
+    app = rt.context.app  # type: ignore
     return await app.get_unread(limit)
 
 
 @tool
 async def get_messages(
-    cfg: RunnableConfig, fro: int, to: int, with_id: bool = False
+    rt: ToolRuntime, fro: int, to: int, with_id: bool = False
 ) -> str:
     """查阅消息记录。
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
@@ -63,9 +60,11 @@ async def get_messages(
     logger.info(f"get_messages: {fro}, {to}, {with_id}")
     try:
         return await msglfmt(
-            (await get_api(cfg).get_group_msg_history(GRP, 0, fro))[: fro - to + 1],
+            (await rt.context.app.qapi.get_group_msg_history(GRP, 0, fro))[
+                : fro - to + 1
+            ],
             with_id,
-            get_api(cfg),
+            rt.context.app.qapi,
         )
     except NapCatAPIError as e:
         logger.warning(f"get_message error: {e}")
@@ -74,13 +73,13 @@ async def get_messages(
 
 @tool
 async def get_messages_by_id(
-    cfg: RunnableConfig, id: str, before: int = 0, after: int = 0
+    rt: ToolRuntime, id: str, before: int = 0, after: int = 0
 ) -> str:
     """按消息ID查阅消息记录。
     参数id为查阅的目标消息ID，before为在目标消息前附带的消息数量，after为在目标消息后附带的消息数量。
     返回的消息列表中，目标消息的行首带有指示 [this] ，该条消息的ID即为查询的ID。
     """
-    api = get_api(cfg)
+    api = rt.context.app.qapi
     try:
         bef = await api.get_group_msg_history(GRP, id, before + 1, True)
         aft = await api.get_group_msg_history(GRP, id, after + 1, False)
@@ -101,13 +100,15 @@ visual_model = ChatOpenAI(
 
 @tool
 async def ask_image(
-    cfg: RunnableConfig, file_name: str, prompt="群友发了这个图，什么意思？"
+    rt: ToolRuntime,
+    file_name: str,
+    prompt="群友发了这个图，什么意思？",
 ) -> str:
     """向视觉模型询问关于某个图像的问题。
     参数file_name是图像的文件名。参数prompt是询问的问题，默认为“群友发了这个图，什么意思？”。
     """
     try:
-        img = await get_api(cfg).get_image(file=file_name)
+        img = await rt.context.app.qapi.get_image(file=file_name)
     except BaseException as e:
         logger.error(f"ask_image 图像获取失败 {e}")
         return "[error 图像打开失败]"
@@ -136,11 +137,11 @@ async def ask_image(
 
 
 @tool
-async def store_memory(cfg: RunnableConfig, contents: str) -> str:
+async def store_memory(rt: ToolRuntime, contents: str) -> str:
     """存入记忆。
     参数contents是记忆内容，每行将作为单独一项条目存入记忆。
     返回存入条目对应的条目ID，每行一个。"""
-    cr = get_chroma(cfg)
+    cr = rt.context.app.chroma
     ids = await cr.aadd_texts(contents.split("\n"))
     logger.info(f"store memory: {ids}")
     return "\n".join(ids)
@@ -148,12 +149,12 @@ async def store_memory(cfg: RunnableConfig, contents: str) -> str:
 
 @tool
 async def query_memory(
-    cfg: RunnableConfig, query: str, k: int = 4, with_id: bool = False
+    rt: ToolRuntime, query: str, k: int = 4, with_id: bool = False
 ) -> str:
     """查询记忆。
     参数query是查询目标。k为返回的条目个数，默认为4。with_id表示返回时是否附带记忆ID。
     返回格式：每行一个条目，如果with_id为真，则每个条目开头附带 [id 记忆ID] 。"""
-    cr = get_chroma(cfg)
+    cr = rt.context.app.chroma
     res = await cr.asimilarity_search(query, k=k)
     ret = "\n".join(
         map(lambda x: (f"[id {x.id}]" if with_id else "") + x.page_content, res)
@@ -162,13 +163,20 @@ async def query_memory(
 
 
 @tool
-async def delete_memory(cfg: RunnableConfig, ids: str) -> str:
+async def delete_memory(rt: ToolRuntime, ids: str) -> str:
     """删除记忆条目。
     参数ids为要删除的条目ID列表，每行一个。条目ID可使用query_memory工具的with_id参数获取。"""
     idl = ids.split("\n")
-    cr = get_chroma(cfg)
+    cr = rt.context.app.chroma
     await cr.adelete(idl)
     return "[success]"
+
+
+@tool
+async def expand_message(rt: ToolRuntime, message_id: str) -> str:
+    """展开一条复合消息的内容。"""
+    # TODO
+    return ""
 
 
 ALL_TOOLS = [
