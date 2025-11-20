@@ -46,7 +46,7 @@ async def agent_loop(
     while True:
         logger.info("agent invoking")
         ret = await agent.ainvoke(
-            {"messages": msg_inject, "idle_minutes": None},
+            {"messages": msg_inject, "idle_minutes": None, "memory": None},
             config=agentconfig,
             context=BotContext(app),
             print_mode="updates",
@@ -88,7 +88,7 @@ def make_agent_loop(app: App):
                 agent = make_agent(ckptr)
                 agentconfig = RunnableConfig(
                     configurable={
-                        "thread_id": GRP,
+                        "thread_id": "1",
                         "app": app,
                         "qapi": app.qbot.api,
                         "chroma": chroma,

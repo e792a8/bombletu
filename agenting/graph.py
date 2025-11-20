@@ -28,7 +28,7 @@ from adapt import GiteeAIEmbeddings
 from app import App
 from mem0 import Memory
 from .tools import ALL_TOOLS
-from .types import BotContext, BotState
+from .types import BotContext, BotState, IdleInfo
 
 logger = get_log(__name__)
 
@@ -40,11 +40,12 @@ logger = get_log(__name__)
 # 你说话喜欢冷幽默。
 # 每条消息以一个字典表示，其中'from'为发送人信息，'user'和'nick'分别为发送人账号和昵称；消息的'content'和'date'字段为消息内容和发送时间。
 # 你可以使用get_unread和get_messages工具获取群消息。
+# 你需要积极使用长期记忆工具 store_memory, query_memory, delete_memory 来记录、回想和维护你认为重要的信息，例如群友的相关情况、你与群友互动过程中令你印象深刻的事情等。
 SYSTEM_PROMPT = f"""
 你是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
 你比较低调，不喜欢高强度发送消息，主要以观察群友对话和了解群友为主。你的发言习惯和风格向群友学习，但保持一点简要、精练、冷幽默的个性。
 
-你需要积极使用长期记忆工具 store_memory, query_memory, delete_memory 来记录、回想和维护你认为重要的信息，例如群友的相关情况、你与群友互动过程中令你印象深刻的事情等。
+你的短期记忆上下文长度有限，需要积极使用set_memory工具记录你认为重要的信息，记录的信息将长驻在你的上下文中。
 
 你可以用get_unread工具获取新接收的消息或用get_messages工具获取历史消息。
 你的账号是“{USR}”，昵称是“{NICK}”，消息记录里会出现你自己的消息，注意分别。
@@ -63,13 +64,18 @@ SYSTEM_PROMPT = f"""
 参与讨论发言时注意话题时效，多注意最新的消息记录，不要对着久远之前的消息记录发不合时宜的回复。
 你使用send工具发出的消息不会进行markdown渲染，不要试图使用markdown标记设置内容格式。
 在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
-不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自主决定要做的事和调用工具。
+user角色消息仅用来向你传递上下文、记忆、实时事件等信息。不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自主决定要做的事和调用工具。
 """.strip()
 # 与当前上下文相关的长期记忆也会通过user角色消息输入，供你参考。
 # 现在你正在测试中，你需要直接执行：获取群里最新20条消息，然后暂停30分钟。
 # 现在你正在进行测试，你要直接对群里最后第4条消息回复“测试”，然后暂停30分钟。
 # 现在你正在测试中，接下来你要直接调用get_messages(fro=80,to=61)读取消息记录，对这段记录进行总结，调用send将总结的内容发出，然后循环进行：调用idle(minutes=1)暂停1分钟，之后判断暂停是正常结束还是被事件中断，将你的判断用send发出。
 # 初始时你精力足够，请你直接开始进行操作。
+
+
+PROMPT_CONTEXT_SUMMARY = """
+对以上内容做一个总结，
+""".strip()
 
 
 # model = ChatOllama(
@@ -110,8 +116,13 @@ async def context_reduce(state: BotState):
 async def llm_call(state: BotState):
     """LLM decides whether to call a tool or not"""
 
+    prompt = [
+        SystemMessage(SYSTEM_PROMPT),
+        HumanMessage(f"当前记忆内容： {state['memory']}"),
+    ]
+
     return {
-        "messages": [model_with_tools.invoke(INITIAL_PROMPTS + state["messages"])],
+        "messages": [model_with_tools.invoke(prompt + state["messages"])],
     }
 
 
@@ -167,6 +178,23 @@ def make_agent(
     # Compile the agent
     agent = builder.compile(checkpointer=ckptr)
     return agent
+
+
+def make_agent_deep(
+    ckptr: BaseCheckpointSaver = InMemorySaver(), store_dir: str | None = None
+):
+    from deepagents import create_deep_agent
+    from deepagents.backends import FilesystemBackend
+    from langchain.agents.structured_output import ToolStrategy
+
+    create_deep_agent(
+        llm,
+        ALL_TOOLS,
+        backend=FilesystemBackend(DATADIR + "/agentfs"),
+        system_prompt=SYSTEM_PROMPT,
+        response_format=ToolStrategy(IdleInfo),
+    )
+    # TODO?
 
 
 agent = make_agent()

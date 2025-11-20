@@ -200,6 +200,22 @@ async def expand_message(runtime: Rt, message_id: str) -> str:
     return ""
 
 
+@tool
+async def set_memory(runtime: Rt, content: str):
+    """设置记忆内容。会替换原来的内容。"""
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    "Success.",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ],
+            "memory": content,
+        }
+    )
+
+
 ALL_TOOLS = [
     idle,
     date,
@@ -208,7 +224,8 @@ ALL_TOOLS = [
     get_messages,
     get_messages_by_id,
     ask_image,
-    store_memory,
-    query_memory,
-    delete_memory,
+    # store_memory,
+    # query_memory,
+    # delete_memory,
+    set_memory,
 ]
