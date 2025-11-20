@@ -9,7 +9,9 @@ from ncatbot.core.api import BotAPI, NapCatAPIError
 from langchain_chroma import Chroma
 from msgfmt import msglfmt, parse_msg
 from langchain_openai import ChatOpenAI
-from langchain.messages import HumanMessage
+from langchain.messages import HumanMessage, ToolMessage
+from langgraph.types import Command
+from langgraph.graph import END
 import subprocess
 from app import App
 from .types import BotContext, BotState
@@ -20,6 +22,25 @@ Rt = ToolRuntime[BotContext, BotState]
 # NOTE langgraph 1.0.3, ToolRuntime inject only supports:
 # argument name being exactly "runtime", or argument type being `ToolRuntime`
 # without type arguments.
+
+
+@tool
+def idle(runtime: Rt, minutes: int) -> Command:
+    """暂停一段时间，参数为分钟数。
+    暂停可以被一些特别事件中断，使你提前恢复运行。
+    重要：必须单独调用，不可与其他工具并行调用。"""
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    "Idle.",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ],
+            "idle_minutes": minutes,
+        },
+        goto=END,
+    )
 
 
 @tool
@@ -180,6 +201,7 @@ async def expand_message(runtime: Rt, message_id: str) -> str:
 
 
 ALL_TOOLS = [
+    idle,
     date,
     send,
     get_unread,

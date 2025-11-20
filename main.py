@@ -45,24 +45,27 @@ async def agent_loop(
     msg_inject = []
     while True:
         logger.info("agent invoking")
-        ret = await agent.ainvoke({"messages": msg_inject}, config=agentconfig, context=BotContext(app), print_mode="updates")  # type: ignore
+        ret = await agent.ainvoke(
+            {"messages": msg_inject, "idle_minutes": None},
+            config=agentconfig,
+            context=BotContext(app),
+            print_mode="updates",
+        )
+        idle_mins = ret["idle_minutes"]
         logger.debug(f"agent return: {ret}")
-        idle_id, mins = check_idle_call(ret)
-        if idle_id:
-            logger.info(f"agent sleeping {mins}min")
+        if idle_mins is not None:
+            logger.info(f"agent sleeping {idle_mins}min")
         else:
             logger.info(f"agent continuing")
-        intr = await app.wait_intr(mins)
+        intr = await app.wait_intr(idle_mins or 0)
         unread = await app.collect_unread()
         msg_inject = []
-        if idle_id is not None:
-            if intr:
-                msg_inject.append(
-                    ToolMessage("Idle interrupted!", tool_call_id=idle_id)
-                )
-            else:
-                msg_inject.append(ToolMessage("Idle finished.", tool_call_id=idle_id))
         info_inject = []
+        if idle_mins is not None:
+            if intr:
+                info_inject.append("[idle interrupted]")
+            else:
+                info_inject.append("[idle finished]")
         if intr:
             info_inject.append(f"[notify {intr}]")
         if unread > 0:

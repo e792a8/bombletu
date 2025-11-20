@@ -7,7 +7,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import add_messages, MessagesState
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langgraph.types import Command
 from langchain_core.embeddings import Embeddings
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from os import environ
 from langchain.messages import (
     AnyMessage,
@@ -70,19 +72,13 @@ SYSTEM_PROMPT = f"""
 # 初始时你精力足够，请你直接开始进行操作。
 
 
-@tool
-def idle(minutes: int) -> str:
-    """暂停一段时间，参数为分钟数。
-    暂停可以被一些特别事件中断，使你提前恢复运行。
-    重要：必须单独调用，不可与其他工具并行调用。"""
-    return "Idle finished."
-
-
 # model = ChatOllama(
 #     model="qwen3:0.6b", base_url="http://192.168.66.1:11434", reasoning=True
 # )
 # model = init_chat_model("anthropic:claude-sonnet-4-5", temperature=0)
 llm = ChatOpenAI(
+    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
+    max_retries=30,
     temperature=0.6,
     model=environ["LLM_MODEL"],
     api_key=environ["LLM_API_KEY"],  # type:ignore
@@ -90,10 +86,9 @@ llm = ChatOpenAI(
 )
 
 
-tools = [idle, *ALL_TOOLS]
-tools_by_name = {tool.name: tool for tool in tools}
+tools_by_name = {tool.name: tool for tool in ALL_TOOLS}
 
-model_with_tools = llm.bind_tools(tools)
+model_with_tools = llm.bind_tools(ALL_TOOLS)
 
 
 INITIAL_PROMPTS = [
@@ -120,23 +115,6 @@ async def llm_call(state: BotState):
     }
 
 
-async def should_continue(state: BotState) -> Literal["tool_node", END]:  # type: ignore
-    """Decide if we should continue the loop or stop based upon whether the LLM made a tool call and whether it is a call to idle."""
-
-    last_msg = state["messages"][-1]
-
-    # If the LLM makes a call to idle, then go to END
-    if (
-        isinstance(last_msg, AIMessage)
-        and len(last_msg.tool_calls) == 1
-        and tools_by_name[last_msg.tool_calls[0]["name"]] is idle
-    ):
-        return END
-
-    # Otherwise, continue loop
-    return "tool_node"
-
-
 embed = GiteeAIEmbeddings(
     dimensions=1024,
     model=environ["EMBED_MODEL"],
@@ -154,7 +132,7 @@ def make_mem0() -> Memory:
     mem0_config = {
         "vector_store": {
             "provider": "langchain",
-            "config": {"client": make_chroma(GRP, DATADIR + "/chroma")},
+            "config": {"client": make_chroma("mem0", DATADIR + "/chroma")},
         },
         "llm": {"provider": "langchain", "config": {"model": llm}},
         "embedder": {"provider": "langchain", "config": {"model": embed}},
@@ -178,12 +156,12 @@ def make_agent(
     # Add nodes
     builder.add_node("context_reduce", context_reduce)
     builder.add_node("llm_call", llm_call)  # type: ignore
-    builder.add_node("tool_node", ToolNode(tools))  # type: ignore
+    builder.add_node("tool_node", ToolNode(ALL_TOOLS))  # type: ignore
 
     # Add edges to connect nodes
     builder.add_edge(START, "context_reduce")
     builder.add_edge("context_reduce", "llm_call")
-    builder.add_conditional_edges("llm_call", should_continue, ["tool_node", END])
+    builder.add_edge("llm_call", "tool_node")
     builder.add_edge("tool_node", END)
 
     # Compile the agent
