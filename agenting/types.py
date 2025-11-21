@@ -5,7 +5,7 @@ from config import *
 from app import App
 
 
-class IdleInfo(TypedDict):
+class Idle(TypedDict):
     idle_minutes: int | None
 
 

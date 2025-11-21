@@ -43,10 +43,14 @@ def idle(runtime: Rt, minutes: int) -> Command:
     )
 
 
+def get_date() -> str:
+    return datetime.now(pytz.timezone(TZ)).isoformat(timespec="seconds")
+
+
 @tool
 def date() -> str:
     """获取当前的本地日期和时间。"""
-    return datetime.now(pytz.timezone(TZ)).isoformat(timespec="seconds")
+    return get_date()
     # return "2025-10-24T01:23:25+08:00"
 
 
@@ -211,7 +215,7 @@ async def set_memory(runtime: Rt, content: str):
                     tool_call_id=runtime.tool_call_id,
                 )
             ],
-            "memory": content,
+            "memory": f"记录时间：{get_date()}\n{content}",
         }
     )
 

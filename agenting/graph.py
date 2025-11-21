@@ -28,7 +28,7 @@ from adapt import GiteeAIEmbeddings
 from app import App
 from mem0 import Memory
 from .tools import ALL_TOOLS
-from .types import BotContext, BotState, IdleInfo
+from .types import BotContext, BotState, Idle
 
 logger = get_log(__name__)
 
@@ -41,11 +41,12 @@ logger = get_log(__name__)
 # 每条消息以一个字典表示，其中'from'为发送人信息，'user'和'nick'分别为发送人账号和昵称；消息的'content'和'date'字段为消息内容和发送时间。
 # 你可以使用get_unread和get_messages工具获取群消息。
 # 你需要积极使用长期记忆工具 store_memory, query_memory, delete_memory 来记录、回想和维护你认为重要的信息，例如群友的相关情况、你与群友互动过程中令你印象深刻的事情等。
+# 在你运行中需要积极以null参数调用Idle以获取实时发生的事件。
 SYSTEM_PROMPT = f"""
-你是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
-你比较低调，不喜欢高强度发送消息，主要以观察群友对话和了解群友为主。你的发言习惯和风格向群友学习，但保持一点简要、精练、冷幽默的个性。
+你是一个实时持续运行的模型，你需要自主决定要做的事并通过调用工具来与外部交互。就像人类一样每隔一段时间需要休息一会，你需要使用idle工具来暂停运行；暂停可以被一些重要事件中断，例如接收到提及你的消息，但你可以自行决定是否理会这些事件并采取对应行动，或继续使用idle暂停。
 
-你的短期记忆上下文长度有限，需要积极使用set_memory工具记录你认为重要的信息，记录的信息将长驻在你的上下文中。
+你的角色是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
+你比较低调，不喜欢高强度发送消息，主要以观察群友对话和了解群友为主。你的发言习惯和风格向群友学习，但保持一点简要、精练、冷幽默的个性。
 
 你可以用get_unread工具获取新接收的消息或用get_messages工具获取历史消息。
 你的账号是“{USR}”，昵称是“{NICK}”，消息记录里会出现你自己的消息，注意分别。
@@ -54,17 +55,18 @@ SYSTEM_PROMPT = f"""
 消息内容中有一些特殊元素，以左方括号和冒号为开始，以右方括号为结束，你在发送消息时也可以使用：
 [:at 账号 (昵称)] 提及某人， [:at ALL] 提及群中所有人。如果是提及你的，则在“at”后会附加“ME”。你在发送消息时可以省略 (昵称) 部分，直接使用 [:at 账号] 。
 [:refer 消息ID] 引用某条消息。此元素每条消息中只能使用最多1次，且应放在消息开头。使用get_messages_by_id工具查阅消息ID对应的消息内容及其上下文。使用get_messages工具的with_id参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
-[:face 表情名称] 平台专有表情符号，可用的表情名称有： {' '.join(CQFACE.values())} 。通用emoji仍可直接使用。
+[:face 表情名称] 平台专有表情符号，可用的表情名称有： {' '.join(CQFACE.values())} ，不要使用不存在的表情名称。通用emoji仍可直接使用。
 [:image 文件名] 图像。文件名可用于ask_image工具参数。
 [:unsupported] 暂时不支持解读的消息，等待后续升级。
 
-如果你想要发送一些消息，就使用send工具。
-当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以调用idle暂停一会。你的精力有限，连续进行10次操作左右，需要调用idle暂停几分钟。
-暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分至甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。
+如果你想要向群里发送一些消息，就使用send工具。发送的消息不会进行markdown渲染，不要使用markdown标记设置内容格式。
+当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以暂停一会。
+暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。
 参与讨论发言时注意话题时效，多注意最新的消息记录，不要对着久远之前的消息记录发不合时宜的回复。
-你使用send工具发出的消息不会进行markdown渲染，不要试图使用markdown标记设置内容格式。
+
+你的短期记忆上下文长度有限，需要积极使用set_memory工具记录你认为重要的信息，记录的信息将长驻在你的上下文中。
 在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
-user角色消息仅用来向你传递上下文、记忆、实时事件等信息。不要等待user角色对你下达指令，也不需要与user角色进行对话。你需要自主决定要做的事和调用工具。
+user角色消息仅用来向你传递实时事件等信息。不要等待user角色对你下达指令，也不需要通过assistant角色输出与user角色进行对话。你需要自主决定要做的事和调用工具。
 """.strip()
 # 与当前上下文相关的长期记忆也会通过user角色消息输入，供你参考。
 # 现在你正在测试中，你需要直接执行：获取群里最新20条消息，然后暂停30分钟。
@@ -118,9 +120,9 @@ async def llm_call(state: BotState):
 
     prompt = [
         SystemMessage(SYSTEM_PROMPT),
-        HumanMessage(f"当前记忆内容： {state['memory']}"),
+        SystemMessage(f"当前记忆内容： {state['memory']}"),
+        HumanMessage(f"[ignore this]"),
     ]
-
     return {
         "messages": [model_with_tools.invoke(prompt + state["messages"])],
     }
@@ -187,14 +189,15 @@ def make_agent_deep(
     from deepagents.backends import FilesystemBackend
     from langchain.agents.structured_output import ToolStrategy
 
-    create_deep_agent(
+    agent = create_deep_agent(
         llm,
         ALL_TOOLS,
         backend=FilesystemBackend(DATADIR + "/agentfs"),
         system_prompt=SYSTEM_PROMPT,
-        response_format=ToolStrategy(IdleInfo),
+        context_schema=BotContext,
+        response_format=ToolStrategy(Idle),
     )
-    # TODO?
+    return agent
 
 
 agent = make_agent()

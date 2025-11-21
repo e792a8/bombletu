@@ -2,7 +2,8 @@ from typing import List
 from ncatbot.core import BotClient, MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
-from agenting import BotContext, BotState, make_agent, make_chroma
+from agenting import BotContext, BotState, make_agent, make_chroma, make_agent_deep
+from agenting.tools import get_date
 import asyncio
 from datetime import datetime
 from pytz import timezone
@@ -42,25 +43,16 @@ async def agent_loop(
     agent: CompiledStateGraph[BotState, BotContext],
     agentconfig: RunnableConfig,
 ):
-    msg_inject = []
+    idle_mins = None
     while True:
-        logger.info("agent invoking")
-        ret = await agent.ainvoke(
-            {"messages": msg_inject, "idle_minutes": None, "memory": None},
-            config=agentconfig,
-            context=BotContext(app),
-            print_mode="updates",
-        )
-        idle_mins = ret["idle_minutes"]
-        logger.debug(f"agent return: {ret}")
         if idle_mins is not None:
             logger.info(f"agent sleeping {idle_mins}min")
         else:
             logger.info(f"agent continuing")
         intr = await app.wait_intr(idle_mins or 0)
         unread = await app.collect_unread()
+        info_inject = [f"[now {get_date()}]"]
         msg_inject = []
-        info_inject = []
         if idle_mins is not None:
             if intr:
                 info_inject.append("[idle interrupted]")
@@ -72,6 +64,17 @@ async def agent_loop(
             info_inject.append(f"[event {unread}条新消息]")
         if len(info_inject) > 0:
             msg_inject.append(HumanMessage("\n".join(info_inject)))
+        logger.info("agent invoking")
+        ret = await agent.ainvoke(
+            {"messages": msg_inject, "idle_minutes": None, "memory": None},
+            # {"messages": msg_inject},
+            config=agentconfig,
+            context=BotContext(app),  # type: ignore
+            print_mode="updates",
+        )
+        idle_mins = ret["idle_minutes"]
+        # idle_mins = ret["structured_response"]["idle_minutes"]
+        logger.debug(f"agent return: {ret}")
 
 
 def make_agent_loop(app: App):
@@ -86,6 +89,7 @@ def make_agent_loop(app: App):
                 ckptr = InMemorySaver()
                 chroma = make_chroma(GRP, DATADIR + "/chroma")
                 agent = make_agent(ckptr)
+                # agent = make_agent_deep(ckptr)
                 agentconfig = RunnableConfig(
                     configurable={
                         "thread_id": "1",
