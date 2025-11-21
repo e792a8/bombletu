@@ -207,17 +207,9 @@ async def expand_message(runtime: Rt, message_id: str) -> str:
 @tool
 async def set_memory(runtime: Rt, content: str):
     """设置记忆内容。会替换原来的内容。"""
-    return Command(
-        update={
-            "messages": [
-                ToolMessage(
-                    "Success.",
-                    tool_call_id=runtime.tool_call_id,
-                )
-            ],
-            "memory": f"记录时间：{get_date()}\n{content}",
-        }
-    )
+    with open(DATADIR + "/memory.txt", "w") as f:
+        f.write(f"记录时间：{get_date()}\n{content}")
+    return "Success."
 
 
 ALL_TOOLS = [

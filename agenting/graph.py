@@ -118,9 +118,14 @@ async def context_reduce(state: BotState):
 async def llm_call(state: BotState):
     """LLM decides whether to call a tool or not"""
 
+    try:
+        with open(DATADIR + "/memory.txt", "r") as f:
+            memory = f.read()
+    except FileNotFoundError:
+        memory = "None"
     prompt = [
         SystemMessage(SYSTEM_PROMPT),
-        SystemMessage(f"当前记忆内容： {state['memory']}"),
+        SystemMessage(f"当前记忆内容：\n{memory}"),
         HumanMessage(f"[ignore this]"),
     ]
     return {

@@ -11,7 +11,6 @@ class Idle(TypedDict):
 
 class BotState(MessagesState):
     idle_minutes: int | None
-    memory: str | None
 
 
 @dataclass
