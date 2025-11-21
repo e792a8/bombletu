@@ -20,6 +20,8 @@ from msgfmt import msglfmt, parse_msg
 import traceback
 from config import *
 from app import App
+from langfuse import get_client
+from langfuse.langchain import CallbackHandler
 
 logger = get_log(__name__)
 
@@ -66,7 +68,7 @@ async def agent_loop(
             msg_inject.append(HumanMessage("\n".join(info_inject)))
         logger.info("agent invoking")
         ret = await agent.ainvoke(
-            {"messages": msg_inject, "idle_minutes": None, "memory": None},
+            {"messages": msg_inject, "idle_minutes": None},
             # {"messages": msg_inject},
             config=agentconfig,
             context=BotContext(app),  # type: ignore
@@ -79,6 +81,8 @@ async def agent_loop(
 
 def make_agent_loop(app: App):
     async def agent_loop_wrapper(_):
+        langfuse = get_client()
+        langfuse_handler = CallbackHandler()
         while True:
             await asyncio.sleep(10)
             logger.info("agent loop starting")
@@ -91,12 +95,13 @@ def make_agent_loop(app: App):
                 agent = make_agent(ckptr)
                 # agent = make_agent_deep(ckptr)
                 agentconfig = RunnableConfig(
+                    callbacks=[langfuse_handler],
                     configurable={
                         "thread_id": "1",
                         "app": app,
                         "qapi": app.qbot.api,
                         "chroma": chroma,
-                    }
+                    },
                 )
                 await agent_loop(app, agent, agentconfig)
             except BaseException as e:
