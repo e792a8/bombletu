@@ -45,6 +45,7 @@ async def agent_loop(
     agent: CompiledStateGraph[BotState, BotContext],
     agentconfig: RunnableConfig,
 ):
+    langfuse = get_client()
     idle_mins = None
     while True:
         if idle_mins is not None:
@@ -67,13 +68,20 @@ async def agent_loop(
         if len(info_inject) > 0:
             msg_inject.append(HumanMessage("\n".join(info_inject)))
         logger.info("agent invoking")
-        ret = await agent.ainvoke(
-            {"messages": msg_inject, "idle_minutes": None},
-            # {"messages": msg_inject},
-            config=agentconfig,
-            context=BotContext(app),  # type: ignore
-            print_mode="updates",
-        )
+        with langfuse.start_as_current_observation(
+            as_type="span",
+            name="langchain-request",
+            trace_context={"trace_id": langfuse.create_trace_id()},
+        ) as span:
+            span.update_trace(input=msg_inject)
+            ret = await agent.ainvoke(
+                {"messages": msg_inject, "idle_minutes": None},
+                # {"messages": msg_inject},
+                config=agentconfig,
+                context=BotContext(app),  # type: ignore
+                print_mode="updates",
+            )
+            span.update_trace(output=ret)
         idle_mins = ret["idle_minutes"]
         # idle_mins = ret["structured_response"]["idle_minutes"]
         logger.debug(f"agent return: {ret}")
