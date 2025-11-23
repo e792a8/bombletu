@@ -3,7 +3,7 @@ from ncatbot.core import BotClient, MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
 from agenting import BotContext, BotState, make_agent, make_chroma, make_agent_deep
-from agenting.tools import get_date
+from utils import get_date
 import asyncio
 from datetime import datetime
 from pytz import timezone
@@ -53,7 +53,7 @@ async def agent_loop(
         else:
             logger.info(f"agent continuing")
         intr = await app.wait_intr(idle_mins or 0)
-        unread = await app.collect_unread()
+        unread = await app.count_unread()
         info_inject = [f"[now {get_date()}]"]
         msg_inject = []
         if idle_mins is not None:
@@ -63,8 +63,7 @@ async def agent_loop(
                 info_inject.append("[idle finished]")
         if intr:
             info_inject.append(f"[notify {intr}]")
-        if unread > 0:
-            info_inject.append(f"[event {unread}条新消息]")
+        info_inject.append(f"[status 未读消息计数: {unread}]")
         if len(info_inject) > 0:
             msg_inject.append(HumanMessage("\n".join(info_inject)))
         logger.info("agent invoking")

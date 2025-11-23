@@ -15,6 +15,7 @@ from langgraph.graph import END
 import subprocess
 from app import App
 from .types import BotContext, BotState
+from utils import get_date
 
 logger = get_log(__name__)
 
@@ -41,10 +42,6 @@ def idle(runtime: Rt, minutes: int) -> Command:
         },
         goto=END,
     )
-
-
-def get_date() -> str:
-    return datetime.now(pytz.timezone(TZ)).isoformat(timespec="seconds")
 
 
 @tool
@@ -81,8 +78,10 @@ async def get_messages(runtime: Rt, fro: int, to: int, with_id: bool = False) ->
     """查阅消息记录。
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
     例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
-    参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。"""
+    参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。
+    调用该工具会将未读消息计数值清零。"""
     logger.info(f"get_messages: {fro}, {to}, {with_id}")
+    await runtime.context.app.clear_unread()
     try:
         return await msglfmt(
             (await runtime.context.app.qapi.get_group_msg_history(GRP, 0, fro))[
@@ -103,6 +102,7 @@ async def get_messages_by_id(
     """按消息ID查阅消息记录。
     参数id为查阅的目标消息ID，before为在目标消息前附带的消息数量，after为在目标消息后附带的消息数量。
     返回的消息列表中，目标消息的行首带有指示 [this] ，该条消息的ID即为查询的ID。
+    调用该工具不会影响未读消息计数值。
     """
     api = runtime.context.app.qapi
     try:
@@ -206,7 +206,9 @@ async def expand_message(runtime: Rt, message_id: str) -> str:
 
 @tool
 async def set_memory(runtime: Rt, content: str):
-    """设置记忆内容。会替换原来的内容。"""
+    """设置记忆内容，自动附加记录时间。
+    会替换旧的记忆内容，因此需要注意将旧记忆中仍有需要的内容附加到新记忆中。
+    """
     with open(DATADIR + "/memory.txt", "w") as f:
         f.write(f"记录时间：{get_date()}\n{content}")
     return "Success."
@@ -216,7 +218,7 @@ ALL_TOOLS = [
     idle,
     date,
     send,
-    get_unread,
+    # get_unread,
     get_messages,
     get_messages_by_id,
     ask_image,

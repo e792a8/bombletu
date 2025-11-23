@@ -39,6 +39,13 @@ class App:
             collected += 1
         return collected
 
+    async def count_unread(self) -> int:
+        await self.collect_unread()
+        return len(self.unread)
+
+    async def clear_unread(self):
+        self.unread = []
+
     async def get_unread(self, limit: int) -> str:
         await self.collect_unread()
         l = []
