@@ -32,30 +32,19 @@ class App:
             if time() > target_time:
                 return None
 
-    async def collect_unread(self) -> int:
+    async def _collect_unread(self) -> int:
         collected = 0
         while ev := await self.newmsgchan.take(timeout=0):
-            self.unread.append(ev)
+            self.unread_count += 1
             collected += 1
         return collected
 
     async def count_unread(self) -> int:
-        await self.collect_unread()
-        return len(self.unread)
+        await self._collect_unread()
+        return self.unread_count
 
     async def clear_unread(self):
-        self.unread = []
-
-    async def get_unread(self, limit: int) -> str:
-        await self.collect_unread()
-        l = []
-        for _ in range(limit):
-            if len(self.unread) < 1:
-                break
-            l.append(self.unread.pop(0))
-        return "\n".join(
-            [await msglfmt(l, False, self.qbot.api), f"[unread {len(self.unread)}]"]
-        )
+        self.unread_count = 0
 
     def __init__(self, make_agent_loop: Callable, chroma: Chroma):
         async def group_message_handler(event: GroupMessageEvent):
@@ -87,7 +76,7 @@ class App:
         self.qapi = qbot.api
         self.newmsgchan = msgchan
         self.intrchan = intrchan
-        self.unread = []
+        self.unread_count = 0
         self.chroma = chroma
 
     def run(self):

@@ -64,24 +64,15 @@ async def send(runtime: Rt, content: str) -> str:
 
 
 @tool
-async def get_unread(runtime: Rt, limit: int) -> str:
-    """获取未读消息列表。
-    参数limit表示限制返回的消息数量。
-    返回的消息列表末尾带有指示 [unread 数量] 表示这些消息后剩余未读消息数量。
-    """
-    app = runtime.context.app  # type: ignore
-    return await app.get_unread(limit)
-
-
-@tool
 async def get_messages(runtime: Rt, fro: int, to: int, with_id: bool = False) -> str:
     """查阅消息记录。
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
     例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。
-    调用该工具会将未读消息计数值清零。"""
+    调用该工具读取到最新消息（即to=1）时，未读消息计数值将清零；如没有读取最新消息，则不影响未读消息计数值。"""
     logger.info(f"get_messages: {fro}, {to}, {with_id}")
-    await runtime.context.app.clear_unread()
+    if to == 1:
+        await runtime.context.app.clear_unread()
     try:
         return await msglfmt(
             (await runtime.context.app.qapi.get_group_msg_history(GRP, 0, fro))[

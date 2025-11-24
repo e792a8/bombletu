@@ -90,6 +90,7 @@ def make_agent_loop(app: App):
     async def agent_loop_wrapper(_):
         langfuse = get_client()
         langfuse_handler = CallbackHandler()
+        retry_delay = 10
         while True:
             await asyncio.sleep(10)
             logger.info("agent loop starting")
@@ -111,15 +112,20 @@ def make_agent_loop(app: App):
                     },
                 )
                 await agent_loop(app, agent, agentconfig)
+                retry_delay = max(10, retry_delay * 0.8)
             except BaseException as e:
                 logger.error(f"agent loop exception: {traceback.format_exc()}")
+                await asyncio.sleep(1)
                 await app.qbot.api.send_group_text(
                     GRP,
                     "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI.",
                 )
+                await asyncio.sleep(1)
                 await app.qbot.api.send_group_text(
-                    CON, f"{GRP} {traceback.format_exc()}"
+                    CON, f"{GRP} {traceback.format_exc()} delay: {retry_delay}"
                 )
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(1800, retry_delay * 2)
 
     return agent_loop_wrapper
 
