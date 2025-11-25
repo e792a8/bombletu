@@ -9,7 +9,7 @@ class Idle(TypedDict):
     idle_minutes: int | None
 
 
-class BotState(MessagesState):
+class BotState(MessagesState, total=False):
     idle_minutes: int | None
 
 

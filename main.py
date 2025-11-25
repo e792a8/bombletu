@@ -75,13 +75,12 @@ async def agent_loop(
             span.update_trace(input=msg_inject)
             ret = await agent.ainvoke(
                 {"messages": msg_inject, "idle_minutes": None},
-                # {"messages": msg_inject},
                 config=agentconfig,
                 context=BotContext(app),  # type: ignore
                 print_mode="updates",
             )
             span.update_trace(output=ret)
-        idle_mins = ret["idle_minutes"]
+        idle_mins = ret.get("idle_minutes")
         # idle_mins = ret["structured_response"]["idle_minutes"]
         logger.debug(f"agent return: {ret}")
 
