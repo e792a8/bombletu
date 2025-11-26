@@ -2,7 +2,14 @@ from typing import List
 from ncatbot.core import BotClient, MessageArray
 from ncatbot.core.event import GroupMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
-from agenting import BotContext, BotState, make_agent, make_chroma, make_agent_deep
+from agenting import (
+    BotContext,
+    BotState,
+    make_agent,
+    make_chroma,
+    make_agent_deep,
+    make_mem0,
+)
 from utils import get_date
 import asyncio
 from datetime import datetime
@@ -98,17 +105,11 @@ def make_agent_loop(app: App):
                 #     DATADIR + "/ckpt.sqlite"
                 # ) as ckptr:
                 ckptr = InMemorySaver()
-                chroma = make_chroma(GRP, DATADIR + "/chroma")
                 agent = make_agent(ckptr)
                 # agent = make_agent_deep(ckptr)
                 agentconfig = RunnableConfig(
                     callbacks=[langfuse_handler],
-                    configurable={
-                        "thread_id": "1",
-                        "app": app,
-                        "qapi": app.qbot.api,
-                        "chroma": chroma,
-                    },
+                    configurable={"thread_id": "1"},
                 )
                 await agent_loop(app, agent, agentconfig)
                 retry_delay = max(10, retry_delay * 0.8)
@@ -130,7 +131,11 @@ def make_agent_loop(app: App):
 
 
 def main():
-    App(make_agent_loop, make_chroma(GRP, DATADIR + "/chroma")).run()
+    App(
+        make_agent_loop,
+        make_chroma("mem1", DATADIR + "/chroma"),
+        # make_mem0(),
+    ).run()
 
 
 if __name__ == "__main__":

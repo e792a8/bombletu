@@ -40,7 +40,7 @@ def idle(runtime: Rt, minutes: int) -> Command:
             ],
             "idle_minutes": minutes,
         },
-        goto=END,
+        # goto=END,
     )
 
 

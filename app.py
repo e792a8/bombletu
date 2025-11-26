@@ -17,6 +17,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from time import time
 from msgfmt import msglfmt, parse_msg
 import traceback
+from mem0 import Memory, MemoryClient
 from config import *
 
 logger = get_log(__name__)

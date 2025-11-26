@@ -21,6 +21,7 @@ from langchain.messages import (
 from typing_extensions import TypedDict, Annotated
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
+from langgraph.func import task, entrypoint
 from langchain_core.runnables import RunnableConfig
 from config import *
 from cqface import CQFACE
@@ -29,6 +30,7 @@ from app import App
 from mem0 import Memory
 from .tools import ALL_TOOLS
 from .types import BotContext, BotState, Idle
+from langchain.agents.middleware import SummarizationMiddleware
 
 logger = get_log(__name__)
 
@@ -108,12 +110,42 @@ INITIAL_PROMPTS = [
 ]
 
 
-async def context_reduce(state: BotState):
-    msgs = state["messages"]
-    if len(msgs) < 28:
-        return None
-    new_msgs = msgs[-18:]
-    return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *new_msgs]}
+@task
+async def make_memory(msgs: list[AnyMessage]):
+    PROMPT = """根据以上交互记录，提取需要长期记忆的重点内容，每行一条："""
+    msgs = (
+        [SystemMessage(SYSTEM_PROMPT), HumanMessage("[ignore this]")]
+        + msgs
+        + [SystemMessage(PROMPT)]
+    )
+    ret = await model_with_tools.ainvoke(msgs)
+    return ret.text.split("\n")
+
+
+@task
+async def fetch_memory(msgs: list[AnyMessage]):
+    PROMPT = """根据以上交互记录，提取与当前环境"""
+
+
+summarizer = SummarizationMiddleware(
+    model_with_tools,
+    max_tokens_before_summary=4000,
+    # max_tokens_before_summary=10,
+    messages_to_keep=8,
+    # messages_to_keep=1,
+)
+
+
+@task
+async def summarize(msgs):
+    ret = summarizer.before_model({"messages": msgs}, None)  # type: ignore
+    if ret:
+        return {"messages": ret["messages"]}  # type: ignore
+
+
+async def context_ng(state: BotState):
+    msgs = [SystemMessage(SYSTEM_PROMPT)] + state["messages"]
+    return await summarize(msgs)
 
 
 async def llm_call(state: BotState):
@@ -172,16 +204,16 @@ def make_agent(
     # Build workflow
     builder = StateGraph(BotState, BotContext)
 
-    # Add nodes
-    builder.add_node("context_reduce", context_reduce)
-    builder.add_node("llm_call", llm_call)  # type: ignore
-    builder.add_node("tool_node", ToolNode(ALL_TOOLS))  # type: ignore
-
     # Add edges to connect nodes
-    builder.add_edge(START, "context_reduce")
-    builder.add_edge("context_reduce", "llm_call")
-    builder.add_edge("llm_call", "tool_node")
-    builder.add_edge("tool_node", END)
+    builder.add_sequence(
+        [
+            context_ng,
+            llm_call,
+            ("tool_node", ToolNode(ALL_TOOLS)),
+        ]
+    )
+    builder.set_entry_point("context_ng")
+    builder.set_finish_point("tool_node")
 
     # Compile the agent
     agent = builder.compile(checkpointer=ckptr)
