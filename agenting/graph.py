@@ -31,6 +31,7 @@ from mem0 import Memory
 from .tools import ALL_TOOLS
 from .types import BotContext, BotState, Idle
 from langchain.agents.middleware import SummarizationMiddleware
+from .summarization import summarize
 
 logger = get_log(__name__)
 
@@ -69,7 +70,7 @@ SYSTEM_PROMPT = f"""
 
 你的短期记忆上下文长度有限，需要积极使用set_memory工具记录你认为重要的信息，记录的信息将长驻在你的上下文中。
 在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
-user角色消息仅用来向你传递实时状态和事件等信息。不要等待user角色对你下达指令，也不需要通过assistant角色输出与user角色进行对话。你需要自主决定要做的事和调用工具。
+user角色消息仅用来向你传递实时状态和事件等信息。不要等待user角色对你下达指令，你需要自主决定要做的事和调用工具。也不需要通过assistant角色输出与user角色进行对话，你通过assistant角色输出的消息不会被看到。但你可以通过assistant消息输出你的想法和思考。
 """.strip()
 # 与当前上下文相关的长期记忆也会通过user角色消息输入，供你参考。
 # 现在你正在测试中，你需要直接执行：获取群里最新20条消息，然后暂停30分钟。
@@ -127,25 +128,11 @@ async def fetch_memory(msgs: list[AnyMessage]):
     PROMPT = """根据以上交互记录，提取与当前环境"""
 
 
-summarizer = SummarizationMiddleware(
-    model_with_tools,
-    max_tokens_before_summary=4000,
-    # max_tokens_before_summary=10,
-    messages_to_keep=8,
-    # messages_to_keep=1,
-)
-
-
-@task
-async def summarize(msgs):
-    ret = summarizer.before_model({"messages": msgs}, None)  # type: ignore
-    if ret:
-        return {"messages": ret["messages"]}  # type: ignore
-
-
 async def context_ng(state: BotState):
     msgs = [SystemMessage(SYSTEM_PROMPT)] + state["messages"]
-    return await summarize(msgs)
+    sum = await summarize(model_with_tools, msgs)
+    if sum:
+        return {"messages": sum}
 
 
 async def llm_call(state: BotState):
