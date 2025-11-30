@@ -8,6 +8,7 @@ from langchain_core.messages import (
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langchain_core.language_models import LanguageModelLike
 
+# REF: langchain.agents.middleware.summarization.DEFAULT_SUMMARY_PROMPT
 SUMMARY_PROMPT = """
 你已接近可接受的token总数上限，现在需要从交互历史中提取最优质/最相关的信息片段。
 随后，这段上下文将覆盖上方的交互历史记录。因此，请确保提取的内容仅包含对实现核心目标最关键的信息。

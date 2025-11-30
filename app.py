@@ -24,13 +24,12 @@ logger = get_log(__name__)
 
 
 class App:
-    async def wait_intr(self, minutes: int):  # FIXME
-        target_time = time() + minutes * 60
+    async def wait_intr(self, until: float):  # FIXME
         while True:
             intr = await self.intrchan.take(timeout=5)
             if intr is not None:
                 return intr
-            if time() > target_time:
+            if time() > until:
                 return None
 
     async def _collect_unread(self) -> int:

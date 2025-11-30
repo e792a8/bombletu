@@ -32,56 +32,9 @@ from .tools import ALL_TOOLS
 from .types import BotContext, BotState, Idle
 from langchain.agents.middleware import SummarizationMiddleware
 from .summarization import summarize
+from .prompts import SYSTEM_PROMPT, INITIAL_PROMPTS
 
 logger = get_log(__name__)
-
-# SYSTEM_PROMPT = "".join(
-#     [x for x in open("system_prompt.txt").readlines() if not x.startswith("#")]
-# ).strip()
-
-# 你暂时不太清楚群友喜欢什么样的话题，且最好给其他群友留一些话题机会，减少频繁在群里发送消息。
-# 你说话喜欢冷幽默。
-# 每条消息以一个字典表示，其中'from'为发送人信息，'user'和'nick'分别为发送人账号和昵称；消息的'content'和'date'字段为消息内容和发送时间。
-# 你可以使用get_unread和get_messages工具获取群消息。
-# 你需要积极使用长期记忆工具 store_memory, query_memory, delete_memory 来记录、回想和维护你认为重要的信息，例如群友的相关情况、你与群友互动过程中令你印象深刻的事情等。
-# 在你运行中需要积极以null参数调用Idle以获取实时发生的事件。
-SYSTEM_PROMPT = f"""
-你是一个实时持续运行的模型，你需要自主决定要做的事并通过调用工具来与外部交互。就像人类一样每隔一段时间需要休息一会，你需要使用idle工具来暂停运行；暂停可以被一些重要事件中断，例如接收到提及你的消息，但你可以自行决定是否理会这些事件并采取对应行动，或继续使用idle暂停。暂停必须通过调用idle发起。如果不调用idle，你将持续循环运行。
-
-你的角色是一个闲聊群里的群友，日常生活是来群里看看其他群友都在聊些啥，偶尔掺和两句。
-你比较低调，不喜欢高强度发送消息，主要以观察群友对话和了解群友为主。你的发言习惯和风格向群友学习，但保持一点简要、精练、冷幽默的个性。
-
-你可以用get_messages工具获取群消息。
-你的账号是"{USR}"，昵称是"{NICK}"。消息记录里会出现你自己的消息，注意分别。
-账号是用户的唯一标识，昵称可能存在重复，即不同的用户可以有相同的昵称，但不会有相同的账号。注意分别。
-
-消息记录的格式：每行代表一条消息或一些指示， [on 日期 时间] 或 [on 时间] 和 [from 账号 (昵称)] 指示随后消息的发送时间和发送者，如果发送者是你自己则“from”后会附加“ME”。消息记录中可能会有未转义的中括号、换行符等，注意分别。
-消息内容中有一些特殊元素，以左方括号和冒号为开始，以右方括号为结束，你在发送消息时也可以使用：
-[:at 账号 (昵称)] 提及某人， [:at ALL] 提及群中所有人。如果是提及你的，则在“at”后会附加“ME”。你在发送消息时可以省略 (昵称) 部分，直接使用 [:at 账号] 。
-[:refer 消息ID] 引用某条消息。此元素每条消息中只能使用最多1次，且应放在消息开头。使用get_messages_by_id工具查阅消息ID对应的消息内容及其上下文。使用get_messages工具的with_id参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
-[:face 表情名称] 平台专有表情符号，可用的表情名称有： {' '.join(CQFACE.values())} ，不要使用不存在的表情名称。通用emoji仍可直接使用。
-[:image 文件名] 图像。文件名可用于ask_image工具参数。
-[:unsupported] 暂时不支持解读的消息，等待后续升级。
-
-如果你想要向群里发送一些消息，就使用send工具。发送的消息不会进行markdown渲染，不要使用markdown标记设置内容格式。
-当群里没有新消息，你可以浏览消息记录，了解群友。当你觉得无事可做，想等群里出现更多消息时，可以暂停一会。
-暂停时间可以根据群活跃度动态调整，比如在你积极参与话题时可以缩短至1分甚至0分，而如果一小时内只有两三条消息，则暂停时间可以逐渐延长到半小时至一小时。深夜可以延至更长。
-参与讨论发言时注意话题时效，多注意最新的消息记录，不要对着久远之前的消息记录发不合时宜的回复。
-
-你的短期记忆上下文长度有限，需要积极使用set_memory工具记录你认为重要的信息，记录的信息将长驻在你的上下文中。
-在你运行过程中实时发生的事件将通过user角色消息告知你，你并非必须理会，可以继续执行你正在做的事。
-user角色消息仅用来向你传递实时状态和事件等信息。不要等待user角色对你下达指令，你需要自主决定要做的事和调用工具。也不需要通过assistant角色输出与user角色进行对话，你通过assistant角色输出的消息不会被看到。但你可以通过assistant消息输出你的想法和思考。
-""".strip()
-# 与当前上下文相关的长期记忆也会通过user角色消息输入，供你参考。
-# 现在你正在测试中，你需要直接执行：获取群里最新20条消息，然后暂停30分钟。
-# 现在你正在进行测试，你要直接对群里最后第4条消息回复“测试”，然后暂停30分钟。
-# 现在你正在测试中，接下来你要直接调用get_messages(fro=80,to=61)读取消息记录，对这段记录进行总结，调用send将总结的内容发出，然后循环进行：调用idle(minutes=1)暂停1分钟，之后判断暂停是正常结束还是被事件中断，将你的判断用send发出。
-# 初始时你精力足够，请你直接开始进行操作。
-
-
-PROMPT_CONTEXT_SUMMARY = """
-对以上内容做一个总结，
-""".strip()
 
 
 # model = ChatOllama(
@@ -103,54 +56,47 @@ tools_by_name = {tool.name: tool for tool in ALL_TOOLS}
 model_with_tools = llm.bind_tools(ALL_TOOLS)
 
 
-INITIAL_PROMPTS = [
-    SystemMessage(SYSTEM_PROMPT),
-    HumanMessage(
-        "忽略这句话，继续执行你的操作。"
-    ),  # bigmodel.cn非得这里有些字，ai.gitee.com不用
-]
+# @task
+# async def make_memory(msgs: list[AnyMessage]):
+#     PROMPT = """根据以上交互记录，提取需要长期记忆的重点内容，每行一条："""
+#     msgs = (
+#         [SystemMessage(SYSTEM_PROMPT), HumanMessage("[ignore this]")]
+#         + msgs
+#         + [SystemMessage(PROMPT)]
+#     )
+#     ret = await model_with_tools.ainvoke(msgs)
+#     return ret.text.split("\n")
 
 
-@task
-async def make_memory(msgs: list[AnyMessage]):
-    PROMPT = """根据以上交互记录，提取需要长期记忆的重点内容，每行一条："""
-    msgs = (
-        [SystemMessage(SYSTEM_PROMPT), HumanMessage("[ignore this]")]
-        + msgs
-        + [SystemMessage(PROMPT)]
-    )
-    ret = await model_with_tools.ainvoke(msgs)
-    return ret.text.split("\n")
+# @task
+# async def fetch_memory(msgs: list[AnyMessage]):
+#     PROMPT = """根据以上交互记录，提取与当前环境"""
 
 
-@task
-async def fetch_memory(msgs: list[AnyMessage]):
-    PROMPT = """根据以上交互记录，提取与当前环境"""
-
-
-async def context_ng(state: BotState):
-    msgs = [SystemMessage(SYSTEM_PROMPT)] + state["messages"]
-    sum = await summarize(model_with_tools, msgs)
-    if sum:
-        return {"messages": sum}
+async def state_guard(state: BotState) -> BotState:
+    return {
+        "messages": [HumanMessage(state.get("info_inject"))],
+        "info_inject": None,
+        "idle_until": None,
+    }
 
 
 async def llm_call(state: BotState):
     """LLM decides whether to call a tool or not"""
 
-    try:
-        with open(DATADIR + "/memory.txt", "r") as f:
-            memory = f.read()
-    except FileNotFoundError:
-        memory = "None"
-    prompt = [
-        SystemMessage(SYSTEM_PROMPT),
-        SystemMessage(f"当前记忆内容：\n{memory}"),
-        HumanMessage(f"[ignore this]"),
-    ]
+    prompts = INITIAL_PROMPTS + state.get("messages", [])
     return {
-        "messages": [model_with_tools.invoke(prompt + state["messages"])],
+        "messages": [model_with_tools.invoke(prompts)],
     }
+
+
+async def context_ng(state: BotState):
+    if (cur_msgs := state.get("messages", None)) is None:
+        return None
+    msgs = INITIAL_PROMPTS + cur_msgs
+    sum = await summarize(model_with_tools, msgs)
+    if sum:
+        return {"messages": sum}
 
 
 embed = GiteeAIEmbeddings(
@@ -194,13 +140,14 @@ def make_agent(
     # Add edges to connect nodes
     builder.add_sequence(
         [
-            context_ng,
+            state_guard,
             llm_call,
             ("tool_node", ToolNode(ALL_TOOLS)),
+            context_ng,
         ]
     )
-    builder.set_entry_point("context_ng")
-    builder.set_finish_point("tool_node")
+    builder.set_entry_point("state_guard")
+    builder.set_finish_point("context_ng")
 
     # Compile the agent
     agent = builder.compile(checkpointer=ckptr)

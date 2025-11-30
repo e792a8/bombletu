@@ -53,17 +53,17 @@ async def agent_loop(
     agentconfig: RunnableConfig,
 ):
     langfuse = get_client()
-    idle_mins = None
+    resumed_state = await agent.aget_state(agentconfig)
+    idle_until = resumed_state.values.get("idle_until")
     while True:
-        if idle_mins is not None:
-            logger.info(f"agent sleeping {idle_mins}min")
+        if idle_until is not None:
+            logger.info(f"agent idle until {get_date(idle_until)}")
         else:
             logger.info(f"agent continuing")
-        intr = await app.wait_intr(idle_mins or 0)
+        intr = await app.wait_intr(idle_until or 0)
         unread = await app.count_unread()
         info_inject = [f"[now {get_date()}]"]
-        msg_inject = []
-        if idle_mins is not None:
+        if idle_until is not None:
             if intr:
                 info_inject.append("[idle interrupted]")
             else:
@@ -71,23 +71,21 @@ async def agent_loop(
         if intr:
             info_inject.append(f"[notify {intr}]")
         info_inject.append(f"[status 未读消息计数: {unread}]")
-        if len(info_inject) > 0:
-            msg_inject.append(HumanMessage("\n".join(info_inject)))
         logger.info("agent invoking")
         with langfuse.start_as_current_observation(
             as_type="span",
             name="langchain-request",
             trace_context={"trace_id": langfuse.create_trace_id()},
         ) as span:
-            span.update_trace(input=msg_inject)
+            span.update_trace(input=info_inject)
             ret = await agent.ainvoke(
-                {"messages": msg_inject, "idle_minutes": None},
+                {"info_inject": "\n".join(info_inject)},
                 config=agentconfig,
                 context=BotContext(app),  # type: ignore
                 print_mode="updates",
             )
             span.update_trace(output=ret)
-        idle_mins = ret.get("idle_minutes")
+        idle_until = ret.get("idle_until")
         # idle_mins = ret["structured_response"]["idle_minutes"]
         logger.debug(f"agent return: {ret}")
 
@@ -97,22 +95,23 @@ def make_agent_loop(app: App):
         langfuse = get_client()
         langfuse_handler = CallbackHandler()
         retry_delay = 10
+        agentconfig = RunnableConfig(
+            callbacks=[langfuse_handler],
+            configurable={"thread_id": "1"},
+        )
         while True:
             await asyncio.sleep(10)
             logger.info("agent loop starting")
             try:
-                # async with AsyncSqliteSaver.from_conn_string(
-                #     DATADIR + "/ckpt.sqlite"
-                # ) as ckptr:
-                ckptr = InMemorySaver()
-                agent = make_agent(ckptr)
-                # agent = make_agent_deep(ckptr)
-                agentconfig = RunnableConfig(
-                    callbacks=[langfuse_handler],
-                    configurable={"thread_id": "1"},
-                )
-                await agent_loop(app, agent, agentconfig)
-                retry_delay = max(10, retry_delay * 0.8)
+                async with AsyncSqliteSaver.from_conn_string(
+                    DATADIR + "/ckpt/ckpt.sqlite"
+                ) as ckptr:
+                    (await ckptr.aget(agentconfig))
+                    # ckptr = InMemorySaver()
+                    agent = make_agent(ckptr)
+                    # agent = make_agent_deep(ckptr)
+                    await agent_loop(app, agent, agentconfig)
+                    retry_delay = max(10, retry_delay * 0.8)
             except BaseException as e:
                 logger.error(f"agent loop exception: {traceback.format_exc()}")
                 await asyncio.sleep(1)

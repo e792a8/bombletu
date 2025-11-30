@@ -16,6 +16,7 @@ import subprocess
 from app import App
 from .types import BotContext, BotState
 from utils import get_date
+from time import time
 
 logger = get_log(__name__)
 
@@ -34,11 +35,11 @@ def idle(runtime: Rt, minutes: int) -> Command:
         update={
             "messages": [
                 ToolMessage(
-                    "Idle.",
+                    f"Idle {minutes} minutes...",
                     tool_call_id=runtime.tool_call_id,
                 )
             ],
-            "idle_minutes": minutes,
+            "idle_until": time() + minutes * 60,
         },
         # goto=END,
     )
@@ -69,7 +70,9 @@ async def get_messages(runtime: Rt, fro: int, to: int, with_id: bool = False) ->
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
     例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 [id 消息ID] 指示。
-    调用该工具读取到最新消息（即to=1）时，未读消息计数值将清零；如没有读取最新消息，则不影响未读消息计数值。"""
+    调用该工具读取到最新消息（即fro=1或to=1）时，未读消息计数值将清零；如没有读取最新消息，则不影响未读消息计数值。"""
+    if to > fro:
+        fro, to = to, fro
     logger.info(f"get_messages: {fro}, {to}, {with_id}")
     if to == 1:
         await runtime.context.app.clear_unread()
@@ -216,5 +219,5 @@ ALL_TOOLS = [
     # store_memory,
     # query_memory,
     # delete_memory,
-    set_memory,
+    # set_memory,
 ]
