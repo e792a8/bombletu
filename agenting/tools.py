@@ -13,7 +13,6 @@ from langchain.messages import HumanMessage, ToolMessage
 from langgraph.types import Command
 from langgraph.graph import END
 import subprocess
-from app import App
 from .types import BotContext, BotState
 from utils import get_date
 from time import time
@@ -153,42 +152,6 @@ async def ask_image(
         logger.error(f"模型调用出错 {e}")
         return "[error 模型调用出错]"
     return str(ret.content)
-
-
-@tool
-async def store_memory(runtime: Rt, contents: str) -> str:
-    """存入记忆。
-    参数contents是记忆内容，每行将作为单独一项条目存入记忆。
-    返回存入条目对应的条目ID，每行一个。"""
-    cr = runtime.context.app.chroma
-    ids = await cr.aadd_texts(contents.split("\n"))
-    logger.info(f"store memory: {ids}")
-    return "\n".join(ids)
-
-
-@tool
-async def query_memory(
-    runtime: Rt, query: str, k: int = 4, with_id: bool = False
-) -> str:
-    """查询记忆。
-    参数query是查询目标。k为返回的条目个数，默认为4。with_id表示返回时是否附带记忆ID。
-    返回格式：每行一个条目，如果with_id为真，则每个条目开头附带 [id 记忆ID] 。"""
-    cr = runtime.context.app.chroma
-    res = await cr.asimilarity_search(query, k=k)
-    ret = "\n".join(
-        map(lambda x: (f"[id {x.id}]" if with_id else "") + x.page_content, res)
-    )
-    return ret
-
-
-@tool
-async def delete_memory(runtime: Rt, ids: str) -> str:
-    """删除记忆条目。
-    参数ids为要删除的条目ID列表，每行一个。条目ID可使用query_memory工具的with_id参数获取。"""
-    idl = ids.split("\n")
-    cr = runtime.context.app.chroma
-    await cr.adelete(idl)
-    return "[success]"
 
 
 @tool

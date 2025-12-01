@@ -19,6 +19,10 @@ from msgfmt import msglfmt, parse_msg
 import traceback
 from mem0 import Memory, MemoryClient
 from config import *
+from components import llm
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
 
 logger = get_log(__name__)
 
@@ -46,7 +50,9 @@ class App:
     async def clear_unread(self):
         self.unread_count = 0
 
-    def __init__(self, make_agent_loop: Callable, chroma: Chroma):
+    def __init__(self, make_agent_loop: Callable):
+        from agenting.tools import ALL_TOOLS
+
         async def group_message_handler(event: GroupMessageEvent):
             if event.group_id == GRP:
                 await self.newmsgchan.put(event)
@@ -72,12 +78,30 @@ class App:
         msgchan = create_channel(create_sliding_buffer(100))  # type: ignore
         intrchan = create_channel(create_sliding_buffer(1))  # type: ignore
 
+        mcp_config = {}
+        for i in range(1, 100):
+            if name := os.environ.get(f"MCP{i}_NAME"):
+                mcp_config[name] = {
+                    "url": os.environ.get(f"MCP{i}_URL"),
+                    "transport": os.environ.get(f"MCP{i}_TRANSPORT"),
+                }
+            else:
+                break
+
+        mcp_client = MultiServerMCPClient(mcp_config)
+        mcp_tools = asyncio.run(mcp_client.get_tools())
+        logger.info(f"MCP tools: {mcp_tools}")
+        model_tools = ALL_TOOLS + mcp_tools
+
         self.qbot = qbot
         self.qapi = qbot.api
         self.newmsgchan = msgchan
         self.intrchan = intrchan
         self.unread_count = 0
-        self.chroma = chroma
+        self.model_tools = model_tools
+        self.llm = llm
+        self.llm_with_tools = llm.bind_tools(model_tools)
+        # self.chroma = chroma
 
     def run(self):
         self.qbot.run_frontend()

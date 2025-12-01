@@ -19,42 +19,32 @@ from langchain.messages import (
     RemoveMessage,
 )
 from typing_extensions import TypedDict, Annotated
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 from langgraph.graph import StateGraph, START, END
 from langgraph.func import task, entrypoint
 from langchain_core.runnables import RunnableConfig
 from config import *
 from cqface import CQFACE
 from adapt import GiteeAIEmbeddings
-from app import App
 from mem0 import Memory
-from .tools import ALL_TOOLS
 from .types import BotContext, BotState, Idle
 from langchain.agents.middleware import SummarizationMiddleware
 from .summarization import summarize
 from .prompts import SYSTEM_PROMPT, INITIAL_PROMPTS
+from langgraph.runtime import Runtime
+from components import llm, embed
+
+if TYPE_CHECKING:
+    from app import App
 
 logger = get_log(__name__)
 
+type Rt = Runtime[BotContext]
 
 # model = ChatOllama(
 #     model="qwen3:0.6b", base_url="http://192.168.66.1:11434", reasoning=True
 # )
 # model = init_chat_model("anthropic:claude-sonnet-4-5", temperature=0)
-llm = ChatOpenAI(
-    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
-    max_retries=30,
-    temperature=0.6,
-    model=environ["LLM_MODEL"],
-    api_key=environ["LLM_API_KEY"],  # type:ignore
-    base_url=environ["LLM_BASE_URL"],
-)
-
-
-tools_by_name = {tool.name: tool for tool in ALL_TOOLS}
-
-model_with_tools = llm.bind_tools(ALL_TOOLS)
-
 
 # @task
 # async def make_memory(msgs: list[AnyMessage]):
@@ -73,7 +63,7 @@ model_with_tools = llm.bind_tools(ALL_TOOLS)
 #     PROMPT = """根据以上交互记录，提取与当前环境"""
 
 
-async def state_guard(state: BotState) -> BotState:
+async def state_guard(state: BotState, runtime: Rt) -> BotState:
     return {
         "messages": [HumanMessage(state.get("info_inject"))],
         "info_inject": None,
@@ -81,20 +71,22 @@ async def state_guard(state: BotState) -> BotState:
     }
 
 
-async def llm_call(state: BotState):
+async def llm_call(state: BotState, runtime: Rt):
     """LLM decides whether to call a tool or not"""
 
+    llm_with_tools = runtime.context.app.llm_with_tools
     prompts = INITIAL_PROMPTS + state.get("messages", [])
     return {
-        "messages": [model_with_tools.invoke(prompts)],
+        "messages": [llm_with_tools.invoke(prompts)],
     }
 
 
-async def context_ng(state: BotState):
+async def context_ng(state: BotState, runtime: Rt):
+    llm_with_tools = runtime.context.app.llm_with_tools
     if (cur_msgs := state.get("messages", None)) is None:
         return None
     msgs = INITIAL_PROMPTS + cur_msgs
-    sum = await summarize(model_with_tools, msgs)
+    sum = await summarize(llm_with_tools, msgs)
     if sum:
         return {"messages": sum}
 
@@ -132,7 +124,9 @@ def make_mem0() -> Memory:
 
 
 def make_agent(
-    ckptr: BaseCheckpointSaver = InMemorySaver(), store_dir: str | None = None
+    app: "App",
+    ckptr: BaseCheckpointSaver = InMemorySaver(),
+    store_dir: str | None = None,
 ):
     # Build workflow
     builder = StateGraph(BotState, BotContext)
@@ -142,7 +136,7 @@ def make_agent(
         [
             state_guard,
             llm_call,
-            ("tool_node", ToolNode(ALL_TOOLS)),
+            ("tool_node", ToolNode(app.model_tools)),
             context_ng,
         ]
     )
@@ -155,7 +149,9 @@ def make_agent(
 
 
 def make_agent_deep(
-    ckptr: BaseCheckpointSaver = InMemorySaver(), store_dir: str | None = None
+    app: "App",
+    ckptr: BaseCheckpointSaver = InMemorySaver(),
+    store_dir: str | None = None,
 ):
     from deepagents import create_deep_agent
     from deepagents.backends import FilesystemBackend
@@ -163,7 +159,7 @@ def make_agent_deep(
 
     agent = create_deep_agent(
         llm,
-        ALL_TOOLS,
+        app.model_tools,
         backend=FilesystemBackend(DATADIR + "/agentfs"),
         system_prompt=SYSTEM_PROMPT,
         context_schema=BotContext,
@@ -172,7 +168,6 @@ def make_agent_deep(
     return agent
 
 
-agent = make_agent()
 # agent = create_agent(
 #     model=llm, tools=tools, system_prompt=SYSTEM_PROMPT, middleware=[after_model_do]
 # )

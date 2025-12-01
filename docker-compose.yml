@@ -13,3 +13,18 @@ services:
     volumes:
       - ./data/napcat/config:/app/napcat/config
       - ./data/napcat/config_qq:/app/.config/QQ
+  web-search-mcp:
+    image: ghcr.1ms.run/aas-ee/open-web-search:latest
+    container_name: web-search-mcp
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3234:3000"
+    environment:
+      NODE_ENV: production
+      DEFAULT_SEARCH_ENGINE: "bing" # Optional: 'bing' | 'duckduckgo' | 'exa' | 'brave', default bing (optional)
+      # USE_PROXY: true # Using a proxy (optional)
+      # PROXY_URL: "http://host.docker.internal:7890"  #  Using a proxy (optional)
+      ENABLE_CORS: "true"
+      CORS_ORIGIN: "*" # Multiple values can be separated by commas and parsed accordingly | 可以多个值逗号分隔，自行解析
+    command: [ "node", "build/index.js" ]

@@ -108,7 +108,7 @@ def make_agent_loop(app: App):
                 ) as ckptr:
                     (await ckptr.aget(agentconfig))
                     # ckptr = InMemorySaver()
-                    agent = make_agent(ckptr)
+                    agent = make_agent(app, ckptr)
                     # agent = make_agent_deep(ckptr)
                     await agent_loop(app, agent, agentconfig)
                     retry_delay = max(10, retry_delay * 0.8)
@@ -132,8 +132,6 @@ def make_agent_loop(app: App):
 def main():
     App(
         make_agent_loop,
-        make_chroma("mem1", DATADIR + "/chroma"),
-        # make_mem0(),
     ).run()
 
 
