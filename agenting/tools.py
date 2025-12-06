@@ -168,39 +168,34 @@ async def set_memory(runtime: ToolRt, content: str):
 
 
 @tool
-async def add_note(runtime: ToolRt, content: str):
+async def edit_note(
+    runtime: ToolRt,
+    adds: list[str] | None = None,
+    deletes: list[int] | None = None,
+):
     """
-    添加笔记。笔记将常驻在你的上下文记录中，你可以使用笔记记录需要长期保留的信息，避免在你的上下文长度不足时遗忘。例如记录需要在未来某个时间执行的行动。
-    添加的笔记将按以下格式驻留在你的上下文中：
+    编辑笔记。笔记将常驻在你的上下文记录中，你可以使用笔记记录需要长期保留的信息，避免在你的上下文长度不足时遗忘。例如记录需要在未来某个时间执行的行动。
+    添加的笔记条目将按以下格式驻留在你的上下文中：
 
-    编号 [添加时间] 笔记内容
+    编号 [添加时间] 条目内容
 
-    其中"添加时间"由系统自动附注，你无需加在内容中。"编号"可用于"delete_note"工具参数以删除笔记。
-    """
-    notes = runtime.state.get("notes", [])
-    notes.append(f"[{get_date()}] {content}")
-    return Command(
-        update={
-            "messages": [
-                ToolMessage(
-                    f"Success.",
-                    tool_call_id=runtime.tool_call_id,
-                )
-            ],
-            "notes": notes,
-        },
-    )
+    其中"添加时间"由系统自动附注，你无需加在内容中。"编号"可用于"deletes"参数以删除笔记。
 
-
-@tool
-async def delete_note(runtime: ToolRt, number: int):
-    """
-    删除笔记。参数"number"为需要删除的笔记编号。
+    参数：
+        adds: 需要增加的笔记条目内容列表。
+        deletes: 需要删除的笔记条目编号列表。
+    deletes和adds参数可以只使用其中一个，也可以同时使用，方便批量操作。
     """
     notes = runtime.state.get("notes", [])
-    if number < 1 or len(notes) < number:
-        return "笔记编号无效"
-    notes.pop(number - 1)
+    if deletes:
+        delset = sorted(set(deletes), reverse=True)
+        for num in delset:
+            if num > len(notes) or num < 1:
+                return f"待删除的条目 {num} 不存在。笔记未修改。"
+            notes.pop(num - 1)
+    if adds:
+        date = get_date()
+        notes += [f"[{date}] {content}" for content in adds]
     return Command(
         update={
             "messages": [
@@ -222,8 +217,7 @@ ALL_TOOLS = [
     get_messages,
     get_messages_by_id,
     ask_image,
-    add_note,
-    delete_note,
+    edit_note,
     # store_memory,
     # query_memory,
     # delete_memory,
