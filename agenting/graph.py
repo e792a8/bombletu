@@ -51,8 +51,18 @@ async def state_guard(state: BotState, runtime: GraphRt) -> BotState:
 async def llm_call(state: BotState, runtime: GraphRt):
     """LLM decides whether to call a tool or not"""
 
+    notes = [f"{i + 1} {n}" for i, n in enumerate(state.get("notes", []))]
+    if len(notes) == 0:
+        notes = "当前无笔记"
+    else:
+        notes = "\n".join(notes)
+    notes_msg = HumanMessage(
+        f'当前笔记：\n\n{notes}\n\n使用"add_note"添加笔记，"delete_note"删除笔记。'
+    )
+
     llm_with_tools = runtime.context.app.llm_with_tools
-    prompts = INITIAL_PROMPTS + state.get("messages", [])
+    msgs = state.get("messages", [])
+    prompts = INITIAL_PROMPTS + msgs[:-1] + [notes_msg] + msgs[-1:]
     return {
         "messages": [llm_with_tools.invoke(prompts)],
     }

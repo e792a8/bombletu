@@ -167,6 +167,53 @@ async def set_memory(runtime: ToolRt, content: str):
     return "Success."
 
 
+@tool
+async def add_note(runtime: ToolRt, content: str):
+    """
+    添加笔记。笔记将常驻在你的上下文记录中，你可以使用笔记记录需要长期保留的信息，避免在你的上下文长度不足时遗忘。例如记录需要在未来某个时间执行的行动。
+    添加的笔记将按以下格式驻留在你的上下文中：
+
+    编号 [添加时间] 笔记内容
+
+    其中"添加时间"由系统自动附注，你无需加在内容中。"编号"可用于"delete_note"工具参数以删除笔记。
+    """
+    notes = runtime.state.get("notes", [])
+    notes.append(f"[{get_date()}] {content}")
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    f"Success.",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ],
+            "notes": notes,
+        },
+    )
+
+
+@tool
+async def delete_note(runtime: ToolRt, number: int):
+    """
+    删除笔记。参数"number"为需要删除的笔记编号。
+    """
+    notes = runtime.state.get("notes", [])
+    if number < 1 or len(notes) < number:
+        return "笔记编号无效"
+    notes.pop(number - 1)
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    f"Success.",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ],
+            "notes": notes,
+        },
+    )
+
+
 ALL_TOOLS = [
     idle,
     date,
@@ -175,6 +222,8 @@ ALL_TOOLS = [
     get_messages,
     get_messages_by_id,
     ask_image,
+    add_note,
+    delete_note,
     # store_memory,
     # query_memory,
     # delete_memory,
