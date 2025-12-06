@@ -7,6 +7,7 @@ from langchain_core.messages import (
 )
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langchain_core.language_models import LanguageModelLike
+from langgraph.func import task
 
 # REF: langchain.agents.middleware.summarization.DEFAULT_SUMMARY_PROMPT
 SUMMARY_PROMPT = """
@@ -30,6 +31,7 @@ KEEP_MSGS = 20
 MSGS_THRESH = 50
 
 
+@task
 async def summarize(model: LanguageModelLike, msgs: list[AnyMessage]):
     if len(msgs) <= MSGS_THRESH:
         return None

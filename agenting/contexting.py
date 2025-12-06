@@ -10,7 +10,6 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import Command
 from langchain_core.embeddings import Embeddings
 from langchain_core.rate_limiters import InMemoryRateLimiter
-from os import environ
 from langchain.messages import (
     AnyMessage,
     SystemMessage,
@@ -26,10 +25,9 @@ from langchain_core.runnables import RunnableConfig
 from config import *
 from cqface import CQFACE
 from adapt import GiteeAIEmbeddings
-from app import App
 from mem0 import Memory
 from .tools import ALL_TOOLS
-from .types import BotContext, BotState, Idle
+from .types import BotContext, BotState, Idle, GraphRt
 from langchain.agents.middleware import SummarizationMiddleware
 from .summarization import summarize
 from .prompts import SYSTEM_PROMPT, INITIAL_PROMPTS
@@ -37,10 +35,11 @@ from .prompts import SYSTEM_PROMPT, INITIAL_PROMPTS
 logger = get_log(__name__)
 
 
-async def context_ng(state: BotState):
+async def context_ng(state: BotState, runtime: GraphRt):
+    llm_with_tools = runtime.context.app.llm_with_tools
     if (cur_msgs := state.get("messages", None)) is None:
         return None
     msgs = INITIAL_PROMPTS + cur_msgs
-    sum = await summarize(model_with_tools, msgs)
+    sum = await summarize(llm_with_tools, msgs)
     if sum:
         return {"messages": sum}

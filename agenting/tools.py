@@ -4,7 +4,6 @@ from langchain_core.tools import BaseTool, BaseToolkit
 import pytz
 from langchain_core.runnables import RunnableConfig
 from config import *
-from os import environ
 from ncatbot.core.api import BotAPI, NapCatAPIError
 from langchain_chroma import Chroma
 from msgfmt import msglfmt, parse_msg
@@ -13,20 +12,15 @@ from langchain.messages import HumanMessage, ToolMessage
 from langgraph.types import Command
 from langgraph.graph import END
 import subprocess
-from .types import BotContext, BotState
+from .types import BotContext, BotState, ToolRt
 from utils import get_date
 from time import time
 
 logger = get_log(__name__)
 
-Rt = ToolRuntime[BotContext, BotState]
-# NOTE langgraph 1.0.3, ToolRuntime inject only supports:
-# argument name being exactly "runtime", or argument type being `ToolRuntime`
-# without type arguments.
-
 
 @tool
-def idle(runtime: Rt, minutes: int) -> Command:
+def idle(runtime: ToolRt, minutes: int) -> Command:
     """暂停一段时间，参数为分钟数。
     暂停可以被一些特别事件中断，使你提前恢复运行。
     重要：必须单独调用，不可与其他工具并行调用。"""
@@ -52,7 +46,7 @@ def date() -> str:
 
 
 @tool
-async def send(runtime: Rt, content: str) -> str:
+async def send(runtime: ToolRt, content: str) -> str:
     """在群里发送消息。"""
     logger.info(f"send: {content}")
     try:
@@ -64,7 +58,9 @@ async def send(runtime: Rt, content: str) -> str:
 
 
 @tool
-async def get_messages(runtime: Rt, fro: int, to: int, with_id: bool = False) -> str:
+async def get_messages(
+    runtime: ToolRt, fro: int, to: int, with_id: bool = False
+) -> str:
     """查阅消息记录。
     参数fro,to表示消息序号区间的开始和结束，最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
     例：get_messages(fro=10,to=1)获取最新10条消息；get_messages(fro=30,to=21)获取最后第30到第21条消息。
@@ -90,7 +86,7 @@ async def get_messages(runtime: Rt, fro: int, to: int, with_id: bool = False) ->
 
 @tool
 async def get_messages_by_id(
-    runtime: Rt, id: str, before: int = 0, after: int = 0
+    runtime: ToolRt, id: str, before: int = 0, after: int = 0
 ) -> str:
     """按消息ID查阅消息记录。
     参数id为查阅的目标消息ID，before为在目标消息前附带的消息数量，after为在目标消息后附带的消息数量。
@@ -110,20 +106,20 @@ async def get_messages_by_id(
 
 visual_model = ChatOpenAI(
     temperature=0.6,
-    model=environ["VIS_MODEL"],
-    api_key=environ["VIS_API_KEY"],  # type:ignore
-    base_url=environ["VIS_BASE_URL"],
+    model=ENV["VIS_MODEL"],
+    api_key=ENV["VIS_API_KEY"],  # type:ignore
+    base_url=ENV["VIS_BASE_URL"],
 )
 
 
 @tool
 async def ask_image(
-    runtime: Rt,
+    runtime: ToolRt,
     file_name: str,
-    prompt="群友发了这个图，什么意思？",
+    prompt="详细描述图片内容",
 ) -> str:
     """向视觉模型询问关于某个图像的问题。
-    参数file_name是图像的文件名。参数prompt是询问的问题，默认为“群友发了这个图，什么意思？”。
+    参数file_name是图像的文件名。参数prompt是询问的问题，默认为“详细描述图片内容”。
     """
     try:
         img = await runtime.context.app.qapi.get_image(file=file_name)
@@ -155,14 +151,14 @@ async def ask_image(
 
 
 @tool
-async def expand_message(runtime: Rt, message_id: str) -> str:
+async def expand_message(runtime: ToolRt, message_id: str) -> str:
     """展开一条复合消息的内容。"""
     # TODO
     return ""
 
 
 @tool
-async def set_memory(runtime: Rt, content: str):
+async def set_memory(runtime: ToolRt, content: str):
     """设置记忆内容，自动附加记录时间。
     会替换旧的记忆内容，因此需要注意将旧记忆中仍有需要的内容附加到新记忆中。
     """

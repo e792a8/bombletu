@@ -6,10 +6,9 @@ from agenting import (
     BotContext,
     BotState,
     make_agent,
-    make_chroma,
     make_agent_deep,
-    make_mem0,
 )
+from components import make_chroma, make_mem0
 from utils import get_date
 import asyncio
 from datetime import datetime
