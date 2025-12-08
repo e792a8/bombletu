@@ -1,2 +1,2 @@
-from .graph import make_agent, make_agent_deep
+from .graph import make_graph
 from .types import BotContext, BotState

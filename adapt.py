@@ -1,4 +1,3 @@
-import time
 import traceback
 from langchain_core.embeddings import Embeddings
 import asyncio
@@ -79,7 +78,7 @@ class GiteeAIEmbeddings(Embeddings):
                 res = resp.json()["data"][0]["embedding"]
                 self.lru[t] = res
                 return res
-            except Exception as e:
+            except Exception:
                 logger.error(f"embedder error: {traceback.format_exc()}")
                 await asyncio.sleep(retry * 5 + 5)
         raise Exception("embedder: too many retries")

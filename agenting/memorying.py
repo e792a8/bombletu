@@ -4,19 +4,15 @@ from langchain_core.messages import (
     AnyMessage,
     AIMessage,
     HumanMessage,
-    RemoveMessage,
     SystemMessage,
 )
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.func import task, entrypoint
 from langchain_core.language_models import LanguageModelLike
-from components import make_chroma, make_mem0, embed, llm, llm2
+from components import make_chroma, llm, llm2
 from config import *
 import json
-from agenting.types import GraphRt
 from mem0.memory.utils import remove_code_blocks, extract_json
 from mem0.configs.prompts import get_update_memory_messages
-from shortuuid import uuid
 from utils import get_date
 
 logger = get_log(__name__)
@@ -82,10 +78,10 @@ MEMORY_QUERY_PROMPT = """
 
 async def llm_xjson(model: LanguageModelLike, msg):
     for retry in range(10):
-        logger.info(f"llm_xjson invoking llm")
+        logger.info("llm_xjson invoking llm")
         try:
             ret = await model.ainvoke(msg)
-        except Exception as e:
+        except Exception:
             logger.error(f"llm_xjson llm invoke error: {traceback.format_exc()}")
             await asyncio.sleep(retry + 3)
         text = ret.text  # type: ignore

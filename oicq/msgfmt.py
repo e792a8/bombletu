@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 from pytz import timezone
 from typing import List
@@ -12,11 +11,9 @@ from ncatbot.core.event.message_segment.message_segment import (
     Face,
     Reply,
     Image,
-    Video,
-    Forward,
 )
 import re
-from cqface import CQFACE, RCQFACE
+from .cqface import CQFACE, RCQFACE
 from config import *
 
 logger = get_log(__name__)
@@ -29,7 +26,7 @@ def format_face(id: str):
         logger.warning(f"invalid face id {id}")
         return id
     iid = int(id)
-    if not iid in CQFACE.keys():
+    if iid not in CQFACE.keys():
         logger.warning(f"unknown face id {iid}")
         return id
     return CQFACE[iid]
@@ -38,7 +35,7 @@ def format_face(id: str):
 def parse_face(name: str):
     if name.isdigit():
         return name
-    if not name in RCQFACE.keys():
+    if name not in RCQFACE.keys():
         logger.warning(f"unknown face name {name}")
         return None
     return RCQFACE[name]

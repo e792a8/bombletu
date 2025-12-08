@@ -1,13 +1,11 @@
 from dataclasses import dataclass
-from typing import List, TypedDict
+from typing import TypedDict
 from langgraph.graph import add_messages
 from langgraph.runtime import Runtime
 from langchain_core.messages import AnyMessage
 from config import *
-from app import App
 from typing import Annotated
-from datetime import datetime
-from langchain.tools import tool, ToolRuntime
+from langchain.tools import ToolRuntime, BaseTool
 
 
 class Idle(TypedDict):
@@ -23,7 +21,8 @@ class BotState(TypedDict, total=False):
 
 @dataclass
 class BotContext:
-    app: App
+    applet_instructions: str
+    tools: list[BaseTool]
 
 
 GraphRt = Runtime[BotContext]

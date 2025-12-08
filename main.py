@@ -1,137 +1,59 @@
-from typing import List
-from ncatbot.core import BotClient, MessageArray
+from ncatbot.core import BotClient
 from ncatbot.core.event import GroupMessageEvent
-from asyncio_channel import create_channel, create_sliding_buffer
-from agenting import (
-    BotContext,
-    BotState,
-    make_agent,
-    make_agent_deep,
-)
-from components import make_chroma, make_mem0
-from utils import get_date
+from oicq.applet import OicqApplet
 import asyncio
-from datetime import datetime
-from pytz import timezone
-from ncatbot.core.api import NapCatAPIError
-import os, signal
-from langchain.messages import AIMessage, ToolMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
-from langchain_chroma import Chroma
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.checkpoint.memory import InMemorySaver
-from time import time
-from msgfmt import msglfmt, parse_msg
+import os
+import signal
 import traceback
 from config import *
-from app import App
-from langfuse import get_client
-from langfuse.langchain import CallbackHandler
+from agent import Agent
 
 logger = get_log(__name__)
 
 
-def check_idle_call(ivk):
-    if (
-        "messages" in ivk
-        and len(ivk["messages"]) > 0
-        and isinstance(last_msg := ivk["messages"][-1], AIMessage)
-        and len(last_msg.tool_calls) == 1
-        and (call := last_msg.tool_calls[0])["name"] == "idle"
-    ):
-        call_id = call["id"]
-        mins = int(call["args"]["minutes"])
-        return call_id, mins
-    return None, 0
+qbot = BotClient()
 
 
-async def agent_loop(
-    app: App,
-    agent: CompiledStateGraph[BotState, BotContext],
-    agentconfig: RunnableConfig,
-):
-    langfuse = get_client()
-    resumed_state = await agent.aget_state(agentconfig)
-    idle_until = resumed_state.values.get("idle_until")
-    while True:
-        if idle_until is not None:
-            logger.info(f"agent idle until {get_date(idle_until)}")
+@qbot.on_group_message()  # type: ignore
+async def group_message_handler(event: GroupMessageEvent):
+    if event.group_id == CON:
+        if event.raw_message == "/kill":
+            logger.warning("kill called")
+            os.kill(os.getpid(), signal.SIGKILL)
+        elif event.raw_message == "/panic":
+            logger.info("panic called")
+            os.kill(os.getpid(), signal.SIGTERM)
+
+
+async def alarm(e: BaseException, retry_delay: float):
+    await asyncio.sleep(1)
+    await qbot.api.send_group_text(
+        GRP,
+        "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI.",
+    )
+    await asyncio.sleep(1)
+    await qbot.api.send_group_text(
+        CON, f"{GRP} {traceback.format_exception(e)} delay: {retry_delay}"
+    )
+
+
+def get_mcp_config():
+    mcp_config = {}
+    for i in range(1, 100):
+        if name := os.environ.get(f"MCP{i}_NAME"):
+            mcp_config[name] = {
+                "url": os.environ.get(f"MCP{i}_URL"),
+                "transport": os.environ.get(f"MCP{i}_TRANSPORT"),
+            }
         else:
-            logger.info(f"agent continuing")
-        intr = await app.wait_intr(idle_until or 0)
-        unread = await app.count_unread()
-        info_inject = [f"[now {get_date()}]"]
-        if idle_until is not None:
-            if intr:
-                info_inject.append("[idle interrupted]")
-            else:
-                info_inject.append("[idle finished]")
-        if intr:
-            info_inject.append(f"[notify {intr}]")
-        info_inject.append(f"[status 未读消息计数: {unread}]")
-        logger.info("agent invoking")
-        with langfuse.start_as_current_observation(
-            as_type="span",
-            name="langchain-request",
-            trace_context={"trace_id": langfuse.create_trace_id()},
-        ) as span:
-            span.update_trace(input=info_inject)
-            ret = await agent.ainvoke(
-                {"info_inject": "\n".join(info_inject)},
-                config=agentconfig,
-                context=BotContext(app),  # type: ignore
-                print_mode="updates",
-            )
-            span.update_trace(output=ret)
-        idle_until = ret.get("idle_until")
-        # idle_mins = ret["structured_response"]["idle_minutes"]
-        logger.debug(f"agent return: {ret}")
-
-
-def make_agent_loop(app: App):
-    async def agent_loop_wrapper(_):
-        langfuse = get_client()
-        langfuse_handler = CallbackHandler()
-        retry_delay = 10
-        agentconfig = RunnableConfig(
-            callbacks=[langfuse_handler],
-            configurable={"thread_id": "1"},
-        )
-        while True:
-            await asyncio.sleep(10)
-            logger.info("agent loop starting")
-            try:
-                async with AsyncSqliteSaver.from_conn_string(
-                    DATADIR + "/ckpt/ckpt.sqlite"
-                ) as ckptr:
-                    (await ckptr.aget(agentconfig))
-                    # ckptr = InMemorySaver()
-                    agent = make_agent(app, ckptr)
-                    # agent = make_agent_deep(ckptr)
-                    await agent_loop(app, agent, agentconfig)
-                    retry_delay = max(10, retry_delay * 0.8)
-            except BaseException as e:
-                logger.error(f"agent loop exception: {traceback.format_exc()}")
-                await asyncio.sleep(1)
-                await app.qbot.api.send_group_text(
-                    GRP,
-                    "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI.",
-                )
-                await asyncio.sleep(1)
-                await app.qbot.api.send_group_text(
-                    CON, f"{GRP} {traceback.format_exc()} delay: {retry_delay}"
-                )
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(1800, retry_delay * 2)
-
-    return agent_loop_wrapper
+            break
+    return mcp_config
 
 
 def main():
-    App(
-        make_agent_loop,
-    ).run()
+    q = OicqApplet()
+    agent = Agent([q], get_mcp_config())
+    asyncio.run(agent.run(alarm))
 
 
 if __name__ == "__main__":
