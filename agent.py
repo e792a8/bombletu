@@ -55,10 +55,10 @@ class Agent:
         return "\n".join(col)
 
     async def collect_tools(self):
-        tools_ = await asyncio.gather(*(apt.get_tools() for apt in self.applets))
         tools = []
-        for t in tools_:
-            tools += t
+        for apt in self.applets:
+            for t in await apt.get_tools():
+                tools.append(t)
         return LOCAL_TOOLS + tools + await self.mcp_client.get_tools()
 
     async def agent_loop(
@@ -81,15 +81,15 @@ class Agent:
                 logger.info("agent continuing")
             intr = await self.wait_events(idle_until or 0)
             status = await self.collect_status()
-            info_inject = [f"[now {get_date()}]"]
+            info_inject = [f"Now: {get_date()}"]
             if idle_until is not None:
                 if intr:
-                    info_inject.append("[idle interrupted]")
+                    info_inject.append("Idle: interrupted")
                 else:
-                    info_inject.append("[idle finished]")
+                    info_inject.append("Idle: finished")
             if intr:
-                info_inject.append(f"[notify {intr}]")
-            info_inject.append(f"[status {status}]")
+                info_inject.append(f"Notify: {intr}")
+            info_inject.append(f"Status: {status}")
             logger.info("agent invoking")
             with langfuse.start_as_current_observation(
                 as_type="span",
