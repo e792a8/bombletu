@@ -88,8 +88,9 @@ class Agent:
                 else:
                     info_inject.append("Idle: finished")
             if intr:
-                info_inject.append(f"Notify: {intr}")
-            info_inject.append(f"Status: {status}")
+                info_inject.append(f"{intr}")
+            if status:
+                info_inject.append(f"{status}")
             logger.info("agent invoking")
             with langfuse.start_as_current_observation(
                 as_type="span",
