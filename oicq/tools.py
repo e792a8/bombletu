@@ -61,9 +61,9 @@ async def get_messages(
         to: 消息序号区间的结束。
         with_id: 是否附带消息ID。
     消息序号规则：最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
-    例：`get_messages(chat="friend 111",fro=10,to=1)`获取与好友"111"私聊会话的最新10条消息；`get_messages(chat="group 222",fro=30,to=21)`获取群聊"222"的最后第30到第21条消息。
+    例：`get_messages(chat_type="friend",chat_id="111",fro=10,to=1)`获取与好友"111"私聊会话的最新10条消息；`get_messages(chat_type="group",chat_id="222",fro=30,to=21)`获取群聊"222"的最后第30到第21条消息。
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 `[id 消息ID]` 指示。
-    调用该工具读取到最新消息（即`fro`=1或`to`=1）时，该会话的未读消息计数将清零；如没有读取最新消息，则不影响未读消息计数。
+    调用该工具读取到最新消息（即fro=1或to=1）时，该会话的未读消息计数将清零；如没有读取最新消息，则不影响未读消息计数。
     """
     if to > fro:
         fro, to = to, fro
