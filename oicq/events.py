@@ -19,7 +19,7 @@ async def group_message_handler(event: GroupMessageEvent):
         if event.message.is_user_at(USR):
             logger.info(f"提及我的消息 {event.raw_message} 送入eventchan")
             await eventchan.put(event)
-        elif await get_group_active(event.group_id) < time():
+        elif time() < await get_group_active(event.group_id):
             logger.info(f"观望的消息 {event.raw_message} 送入eventchan")
             await eventchan.put(event)
 
