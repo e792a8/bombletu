@@ -144,6 +144,7 @@ async def forward_messages(chat_type: ChatTy, chat_id: str, message_ids: list[st
         chat_type: 转发到的目标聊天会话类型，为"friend"代表好友私聊或"group"代表群聊。
         chat_id: 转发到的目标聊天会话ID，如chat_type="friend"则为用户ID，chat_type="group"则为群组ID。
         message_ids: 需要转发的消息的消息ID列表，使用`get_messages`的`with_id`参数获取。
+    向群组转发消息后进入该群组的观望状态，2分钟内该群的任意消息会将你的暂停唤醒。
     调用该工具时，发送目标聊天会话的未读消息计数值将清零。
     """
     try:
@@ -152,10 +153,12 @@ async def forward_messages(chat_type: ChatTy, chat_id: str, message_ids: list[st
         else:
             await qapi.send_private_forward_msg_by_id(chat_id, message_ids)  # type: ignore
         await clear_unread(chat_type, chat_id)
+        if chat_type == "group":
+            await set_group_active(chat_id, time() + 60 * 2)
+        return "Success."
     except Exception as e:
         logger.error(f"forward_messages: {e}")
         return f"Error: {e}"
-    return "Success."
 
 
 visual_model = ChatOpenAI(
