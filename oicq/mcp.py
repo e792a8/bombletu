@@ -47,6 +47,7 @@ INSTRUCTIONS = f"""
 `[:refer 消息ID]` 引用某条消息。此元素每条消息中只能使用最多1次，且应放在消息开头。使用`get_messages_by_id`工具查阅消息ID对应的消息内容及其上下文。使用`get_messages`工具的`with_id`参数查询消息ID。你在一般浏览消息记录时无需使用with_id参数，减小信息量。
 `[:face 表情名称]` 平台专有表情符号，可用的表情名称有： {" ".join(CQFACE.values())} 。不要使用不存在的表情名称。通用emoji仍可直接使用。
 `[:image 文件名]` 图像。文件名可用于`ask_image`工具参数。
+`[:forward 转发ID]` 多条消息合并转发形成的消息列表。使用`unwrap_forward`展开查看详情。在你需要转发消息时，使用`forward_messages`工具。
 `[:unsupported]` 暂时不支持解读的消息，等待后续升级。
 """
 

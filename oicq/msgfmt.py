@@ -10,6 +10,7 @@ from ncatbot.core.event.message_segment.message_segment import (
     Face,
     Reply,
     Image,
+    Forward,
 )
 import re
 from .cqface import CQFACE, RCQFACE
@@ -129,8 +130,8 @@ async def format_msg(msg: MessageArray, group_id: str | None = None) -> str:
             m += f"[:image {seg.file}]"
         # elif isinstance(seg, Video):
         #     m += f"[:video {seg.file_id}]"
-        # elif isinstance(seg, Forward):
-        #     m += f"[:forward {seg.id}]"
+        elif isinstance(seg, Forward):
+            m += f"[:forward {seg.id}]"
         else:
             m += "[:unsupported]"
     return m

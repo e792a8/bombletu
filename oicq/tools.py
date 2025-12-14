@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 import subprocess
 from config import *
-from .msgfmt import parse_msg, msglfmt
+from .msgfmt import format_msg, parse_msg, msglfmt
 from .globl import ChatTy, get_messages_wrapped, mcp, qapi
 from .status import clear_unread, get_chats_info, set_group_active
 
@@ -110,6 +110,52 @@ async def get_messages_by_id(
     except NapCatAPIError as e:
         logger.error(f"{e}")
         return "Error: 软件故障"
+
+
+@mcp.tool()
+async def unwrap_forward(forward_id: str) -> str:
+    """
+    展开查看`[:forward]`类型消息的详情。
+    参数:
+        forward_id: 转发ID。
+    """
+    try:
+        msg = await qapi.get_forward_msg(forward_id)
+    except Exception as e:
+        logger.error(f"unwrap_forward: {e}")
+        return f"Error: {e}"
+    lns = []
+    lns.append(f"[forward {forward_id}]")
+    last_from = None
+    for node in msg.content:
+        cur_from = f"[from {node.user_id} ({node.nickname})]"
+        if cur_from != last_from:
+            lns.append(cur_from)
+            last_from = cur_from
+        lns.append(await format_msg(node.content))
+    return "\n".join(lns)
+
+
+@mcp.tool()
+async def forward_messages(chat_type: ChatTy, chat_id: str, message_ids: list[str]):
+    """
+    将多条消息合并为一个消息列表并转发到目标聊天会话。
+    参数：
+        chat_type: 转发到的目标聊天会话类型，为"friend"代表好友私聊或"group"代表群聊。
+        chat_id: 转发到的目标聊天会话ID，如chat_type="friend"则为用户ID，chat_type="group"则为群组ID。
+        message_ids: 需要转发的消息的消息ID列表，使用`get_messages`的`with_id`参数获取。
+    调用该工具时，发送目标聊天会话的未读消息计数值将清零。
+    """
+    try:
+        if chat_type == "group":
+            await qapi.send_group_forward_msg_by_id(chat_id, message_ids)  # type: ignore
+        else:
+            await qapi.send_private_forward_msg_by_id(chat_id, message_ids)  # type: ignore
+        await clear_unread(chat_type, chat_id)
+    except Exception as e:
+        logger.error(f"forward_messages: {e}")
+        return f"Error: {e}"
+    return "Success."
 
 
 visual_model = ChatOpenAI(
