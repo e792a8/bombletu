@@ -32,7 +32,7 @@ async def llm_call(state: BotState, runtime: GraphRt):
         notes = "当前无笔记"
     else:
         notes = "\n".join(notes)
-    notes_msg = HumanMessage(f'当前笔记（使用"edit_note"编辑笔记）：\n\n{notes}')
+    notes_msg = HumanMessage(f"当前笔记（使用`edit_note`编辑笔记）：\n\n{notes}")
 
     llm_with_tools = llm.bind_tools(runtime.context.tools)
     msgs = state.get("messages", [])
