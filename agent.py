@@ -35,10 +35,10 @@ class Agent:
             for ap in self.applets:
                 if e := await ap.poll_events(timeout):
                     ev.append(e)
-            if time() > until:
-                return None
             if len(ev) > 0:
                 return "\n".join(ev)
+            if time() > until:
+                return None
 
     async def collect_status(self):
         col = []
@@ -98,6 +98,7 @@ class Agent:
                 trace_context={"trace_id": langfuse.create_trace_id()},
             ) as span:
                 info = "\n".join(info_inject)
+                logger.info(f"info inject: {info}")
                 span.update_trace(input=info)
                 ret = await graph.ainvoke(
                     {"info_inject": info},
