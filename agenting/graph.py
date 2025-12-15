@@ -5,7 +5,6 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain.messages import (
     HumanMessage,
 )
-from typing import TYPE_CHECKING
 from langgraph.graph import StateGraph
 from config import *
 from .types import BotContext, BotState, GraphRt
@@ -16,30 +15,48 @@ from .contexting import context_ng
 logger = get_log(__name__)
 
 
-async def state_guard(state: BotState, runtime: GraphRt) -> BotState:
-    return {
-        "messages": [HumanMessage(state.get("info_inject"))],
-        "info_inject": None,
-        "idle_until": None,
-    }
+async def state_preguard(state: BotState, runtime: GraphRt) -> BotState:
+    return BotState(idle_minutes=None, idle_until=None)
 
 
 async def llm_call(state: BotState, runtime: GraphRt):
-    """LLM decides whether to call a tool or not"""
+    info_inject = state.get("info_inject") or ""
+    tire_level = state.get("tire_level", 0)
+    if tire_level > 10:
+        info_inject += "\nHint: 你短时间内活动较密集，建议适时使用`idle`暂停"
+    info_msg = HumanMessage(info_inject)
 
     notes = [f"{i + 1} {n}" for i, n in enumerate(state.get("notes", []))]
     if len(notes) == 0:
         notes = "当前无笔记"
     else:
         notes = "\n".join(notes)
-    notes_msg = HumanMessage(f"当前笔记（使用`edit_note`编辑笔记）：\n\n{notes}")
+    notes_msg = HumanMessage(
+        f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n\n{notes}"
+    )
+
+    last_msg = HumanMessage("继续你接下来的行动:")
 
     llm_with_tools = llm.bind_tools(runtime.context.tools)
     msgs = state.get("messages", [])
-    prompts = initial_prompts(runtime.context) + msgs[:-1] + [notes_msg] + msgs[-1:]
-    return {
-        "messages": [llm_with_tools.invoke(prompts)],
-    }
+    prompts_send = (
+        initial_prompts(runtime.context) + msgs + [notes_msg, info_msg, last_msg]
+    )
+
+    llm_return = llm_with_tools.invoke(prompts_send)
+    messages_update = [info_msg, llm_return]
+    return BotState(messages=messages_update)
+
+
+async def state_postguard(state: BotState, runtime: GraphRt):
+    idle_minutes = state.get("idle_minutes")
+    tire_level = state.get("tire_level", 0)
+    if not idle_minutes:
+        tire_level += 1
+    else:
+        tire_level /= max(1.2, idle_minutes / 2)
+    update = BotState(info_inject=None, tire_level=tire_level)
+    return update
 
 
 def make_graph(
@@ -53,14 +70,15 @@ def make_graph(
     # Add edges to connect nodes
     builder.add_sequence(
         [
-            state_guard,
+            state_preguard,
             llm_call,
             ("tool_node", ToolNode(tools)),
             context_ng,
+            state_postguard,
         ]
     )
-    builder.set_entry_point("state_guard")
-    builder.set_finish_point("context_ng")
+    builder.set_entry_point("state_preguard")
+    builder.set_finish_point("state_postguard")
 
     # Compile the agent
     graph = builder.compile(checkpointer=ckptr)

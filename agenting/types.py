@@ -15,7 +15,9 @@ class Idle(TypedDict):
 class BotState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     info_inject: str | None
+    idle_minutes: int | None
     idle_until: float | None
+    tire_level: float
     notes: list[str]
 
 

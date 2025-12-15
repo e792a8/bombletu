@@ -24,5 +24,4 @@ def initial_prompts(context: BotContext):
         SystemMessage(
             SYSTEM_PROMPT.format(applet_instructions=context.applet_instructions)
         ),
-        HumanMessage("[ignore this]"),
     ]
