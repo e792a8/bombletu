@@ -30,7 +30,7 @@ async def send(chat_type: ChatTy, chat_id: str, content: str) -> str:
         chat_id: 发送到的聊天会话ID，如chat_type="friend"则为用户ID，chat_type="group"则为群组ID。
         content: 发送的内容。
     发送的消息不会进行markdown渲染，不要使用markdown标记设置内容格式。
-    向群组发送消息后进入该群组的观望状态，2分钟内该群的任意消息会将你的暂停唤醒。
+    向群组发送消息后2分钟内，该群的任意消息会将你的暂停唤醒。
     调用该工具发送消息时，对应聊天会话的未读消息计数值将清零。
     """
     logger.info(f"send: {content}")
@@ -144,7 +144,7 @@ async def forward_messages(chat_type: ChatTy, chat_id: str, message_ids: list[st
         chat_type: 转发到的目标聊天会话类型，为"friend"代表好友私聊或"group"代表群聊。
         chat_id: 转发到的目标聊天会话ID，如chat_type="friend"则为用户ID，chat_type="group"则为群组ID。
         message_ids: 需要转发的消息的消息ID列表，使用`get_messages`的`with_id`参数获取。
-    向群组转发消息后进入该群组的观望状态，2分钟内该群的任意消息会将你的暂停唤醒。
+    向群组转发消息后2分钟内，该群的任意消息会将你的暂停唤醒。
     调用该工具时，发送目标聊天会话的未读消息计数值将清零。
     """
     try:
