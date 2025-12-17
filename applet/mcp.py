@@ -2,14 +2,19 @@ from typing import override
 from .base import BaseApplet
 from langchain_mcp_adapters.sessions import Connection
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_core.tools import BaseTool
+from mcp.client.session import ClientSession
+from mcp.types import TextContent
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 class MCPApplet(BaseApplet):
-    def __init__(self, name: str, mcpconfig: Connection) -> None:
+    def __init__(self, name: str, mcp: ClientSession) -> None:
         self._name = name
-        self._mcp = MultiServerMCPClient({name: mcpconfig})
-        self._mcp.get_tools
+        self._mcp = mcp
 
     @property
     @override
@@ -18,11 +23,13 @@ class MCPApplet(BaseApplet):
 
     @override
     async def get_instructions(self):
-        return (await self._mcp.get_prompt(self._name, "instructions"))[0].text
+        content = (await self._mcp.get_prompt("instructions")).messages[0].content
+        assert isinstance(content, TextContent)
+        return content.text
 
     @override
     async def get_tools(self) -> list[BaseTool]:
-        return await self._mcp.get_tools()
+        return await load_mcp_tools(self._mcp)
 
     @override
     async def poll_events(
@@ -39,16 +46,20 @@ class MCPApplet(BaseApplet):
         until = time() + timeout
         while True:
             tim = min(60, max(0, until - time()))
-            ret = await self._mcp.get_prompt(
-                self._name,
-                "events",
-                arguments={"timeout": str(tim), "select": ",".join(select)},
-            )
+            ret = (
+                await self._mcp.get_prompt(
+                    "events",
+                    {"timeout": str(tim), "select": ",".join(select)},
+                )
+            ).messages
             if len(ret) > 0:
-                return ret[0].text
+                assert isinstance(ret[0].content, TextContent)
+                return ret[0].content.text
             if time() > until:
                 return None
 
     @override
     async def get_status(self) -> str:
-        return (await self._mcp.get_prompt(self._name, "status"))[0].text
+        content = (await self._mcp.get_prompt("status")).messages[0].content
+        assert isinstance(content, TextContent)
+        return content.text

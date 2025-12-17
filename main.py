@@ -1,12 +1,14 @@
 from ncatbot.core import BotClient
 from ncatbot.core.event import GroupMessageEvent
-from oicq.applet import OicqApplet
+from applet.mcp import MCPApplet
 import asyncio
 import os
 import signal
 import traceback
 from config import *
 from agent import Agent
+from mcp import ClientSession
+from mcp.client.stdio import stdio_client, StdioServerParameters
 
 logger = get_log(__name__)
 
@@ -50,10 +52,20 @@ def get_mcp_config():
     return mcp_config
 
 
+async def amain():
+    oicq_mcp = stdio_client(
+        StdioServerParameters(command="python", args=["-m", "oicq.mcp"])
+    )
+    async with oicq_mcp as (rs, ws):
+        async with ClientSession(rs, ws) as session:
+            await session.initialize()
+            q = MCPApplet("oicq", session)
+            agent = Agent([q], get_mcp_config())
+            await agent.run(alarm)
+
+
 def main():
-    q = OicqApplet()
-    agent = Agent([q], get_mcp_config())
-    asyncio.run(agent.run(alarm))
+    asyncio.run(amain())
 
 
 if __name__ == "__main__":
