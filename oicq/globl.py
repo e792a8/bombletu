@@ -5,6 +5,7 @@ from ncatbot.core.event.message import GroupMessageEvent, PrivateMessageEvent
 from ncatbot.core.api import NapCatAPIError
 from sys import argv
 from config import CON, USR
+from langfuse import get_client
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -17,6 +18,8 @@ if port:
     mcp = FastMCP("oicq", port=port)
 else:
     mcp = FastMCP("oicq")
+
+langfuse = get_client()
 
 ChatTy = Literal["friend", "group"]
 

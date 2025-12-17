@@ -92,6 +92,7 @@ class Agent:
             if status:
                 info_inject.append(f"{status}")
             logger.info("agent invoking")
+            applet_instructions = await self.collect_applet_instructions()
             with langfuse.start_as_current_observation(
                 as_type="span",
                 name="langchain-request",
@@ -104,7 +105,8 @@ class Agent:
                     {"info_inject": info},
                     config=agentconfig,
                     context=BotContext(
-                        applet_instructions=self.applet_instructions, tools=self.tools
+                        applet_instructions=applet_instructions,
+                        tools=self.tools,
                     ),  # type: ignore
                     print_mode="updates",
                 )
@@ -122,7 +124,6 @@ class Agent:
             configurable={"thread_id": "1"},
         )
         self.tools = await self.collect_tools()
-        self.applet_instructions = await self.collect_applet_instructions()
         while True:
             await asyncio.sleep(10)
             logger.info("agent loop starting")

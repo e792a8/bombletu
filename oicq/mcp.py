@@ -13,7 +13,7 @@ from ncatbot.core.event import GroupMessageEvent, PrivateMessageEvent
 from asyncio_channel import create_channel, create_sliding_buffer
 from .cqface import CQFACE
 from sys import argv
-from .globl import mcp, port, qbot
+from .globl import mcp, port, qbot, langfuse
 from .events import wait_events
 from .status import init_read_status, get_status
 from . import tools as _
@@ -49,12 +49,15 @@ INSTRUCTIONS = f"""
 `[:image 文件名]` 图像。文件名可用于`ask_image`工具参数。
 `[:forward 转发ID]` 多条消息合并转发形成的消息列表。使用`unwrap_forward`展开查看详情。在你需要转发消息时，使用`forward_messages`工具。
 `[:unsupported]` 暂时不支持解读的消息，等待后续升级。
+
+{{add_prompts}}
 """
 
 
 @mcp.prompt()
 async def instructions():
-    return pt(INSTRUCTIONS)
+    add_prompts = langfuse.get_prompt("oicq-add")
+    return pt(INSTRUCTIONS.format(add_prompts=add_prompts.prompt))
 
 
 @mcp.prompt()
