@@ -140,6 +140,11 @@ class Agent:
             except BaseException as e:
                 logger.error(f"agent loop exception: {traceback.format_exc()}")
                 if alarm:
-                    await alarm(e, retry_delay)
+                    try:
+                        await alarm(e, retry_delay)
+                    except BaseException:
+                        logger.error(
+                            f"alarm function exception: {traceback.format_exc()}"
+                        )
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(1800, retry_delay * 2)

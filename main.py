@@ -53,6 +53,7 @@ def get_mcp_config():
 
 
 async def amain():
+    qbot.run_backend()
     oicq_mcp = stdio_client(
         StdioServerParameters(command="python", args=["-m", "oicq.mcp"])
     )
