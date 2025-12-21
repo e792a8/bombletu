@@ -37,9 +37,9 @@ async def format_events(events) -> str:
     for ev in events:
         if isinstance(ev, GroupMessageEvent):
             if ev.message.is_user_at(USR):
-                lines.append(f"Notify: 提及我的群消息: {await format_msg_oneline(ev)}")
+                lines.append(f"Notify: 提及你的群消息: {await format_msg_oneline(ev)}")
             else:
-                lines.append(f"Event: 观望的群消息: {await format_msg_oneline(ev)}")
+                lines.append(f"Event: 实时群消息: {await format_msg_oneline(ev)}")
         elif isinstance(ev, PrivateMessageEvent):
             lines.append(f"Notify: 好友私信消息: {await format_msg_oneline(ev)}")
         else:

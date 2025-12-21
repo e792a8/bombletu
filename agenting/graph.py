@@ -35,7 +35,7 @@ async def llm_call(state: BotState, runtime: GraphRt):
         f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n\n{notes}"
     )
 
-    last_msg = HumanMessage("继续你接下来的行动:")
+    last_msg = HumanMessage("分析当前状态，规划并继续你接下来的行动:")
 
     llm_with_tools = llm.bind_tools(runtime.context.tools)
     msgs = state.get("messages", [])
