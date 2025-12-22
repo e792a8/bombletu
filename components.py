@@ -1,32 +1,34 @@
 import asyncio
 from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
+from langchain_core.language_models import BaseChatModel
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from config import *
-from adapt import GiteeAIEmbeddings
+from adapt import GiteeAIEmbeddings, ChatMux
 from mem0 import AsyncMemory
+from langfuse import get_client
 
 logger = get_log(__name__)
 
 
-llm = ChatOpenAI(
-    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
-    max_retries=30,
-    temperature=0.6,
-    model=ENV["LLM_MODEL"],
-    api_key=ENV["LLM_API_KEY"],  # type:ignore
-    base_url=ENV["LLM_BASE_URL"],
-)
+def collect_llms():
+    llms = []  # type: list[BaseChatModel]
+    for i in range(1, 100):
+        if ENV.get(f"LLM{i}_MODEL"):
+            llms.append(
+                ChatOpenAI(
+                    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
+                    max_retries=30,
+                    temperature=0.6,
+                    model=ENV[f"LLM{i}_MODEL"],
+                    api_key=ENV[f"LLM{i}_API_KEY"],  # type:ignore
+                    base_url=ENV[f"LLM{i}_BASE_URL"],
+                )
+            )
+    return llms
 
-llm2 = ChatOpenAI(
-    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
-    max_retries=30,
-    temperature=0.6,
-    model=ENV["LLM2_MODEL"],
-    api_key=ENV["LLM2_API_KEY"],  # type:ignore
-    base_url=ENV["LLM2_BASE_URL"],
-)
 
+llm = ChatMux(collect_llms())  # type: ignore
 
 embed = GiteeAIEmbeddings(
     dimensions=int(ENV["EMBED_DIMENSIONS"]),
@@ -34,6 +36,8 @@ embed = GiteeAIEmbeddings(
     base_url=ENV["EMBED_BASE_URL"],
     api_key=ENV["EMBED_API_KEY"],  # type: ignore
 )
+
+langfuse = get_client()
 
 
 def make_chroma(col: str, persist_dir: str | None = None):

@@ -35,7 +35,7 @@ async def llm_call(state: BotState, runtime: GraphRt):
         f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n\n{notes}"
     )
 
-    last_msg = HumanMessage("分析当前状态，规划并继续你接下来的行动:")
+    last_msg = HumanMessage("分析当前状态，规划或继续你接下来的行动:")
 
     llm_with_tools = llm.bind_tools(runtime.context.tools)
     msgs = state.get("messages", [])
@@ -43,7 +43,7 @@ async def llm_call(state: BotState, runtime: GraphRt):
         initial_prompts(runtime.context) + msgs + [notes_msg, info_msg, last_msg]
     )
 
-    llm_return = llm_with_tools.invoke(prompts_send)
+    llm_return = await llm_with_tools.ainvoke(prompts_send)
     messages_update = [info_msg, llm_return]
     return BotState(messages=messages_update)
 
@@ -86,22 +86,15 @@ def make_graph(
 
 
 """
-def make_agent_deep(
-    app: "App",
-    ckptr: BaseCheckpointSaver = InMemorySaver(),
-    store_dir: str | None = None,
-):
+def make_agent_deep(tools: list[BaseTool]):
     from deepagents import create_deep_agent
     from deepagents.backends import FilesystemBackend
     from langchain.agents.structured_output import ToolStrategy
 
     agent = create_deep_agent(
         llm,
-        app.model_tools,
+        tools,
         backend=FilesystemBackend(DATADIR + "/agentfs"),
-        system_prompt=SYSTEM_PROMPT,
-        context_schema=BotContext,
-        response_format=ToolStrategy(Idle),
     )
     return agent
 """
