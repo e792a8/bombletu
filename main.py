@@ -28,14 +28,14 @@ async def group_message_handler(event: GroupMessageEvent):
 
 
 async def alarm(e: BaseException, retry_delay: float):
+    # await asyncio.sleep(1)
+    # await qbot.api.send_group_text(
+    #     GRP,
+    #     "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI.",
+    # )
     await asyncio.sleep(1)
     await qbot.api.send_group_text(
-        GRP,
-        "Someone tell [CQ:at,qq=1571224208] there is a problem with my AI.",
-    )
-    await asyncio.sleep(1)
-    await qbot.api.send_group_text(
-        CON, f"{GRP} {traceback.format_exception(e)} delay: {retry_delay}"
+        CON, f"[CQ:at,qq=1571224208] {GRP} {traceback.format_exception(e)} delay: {retry_delay}"
     )
 
 

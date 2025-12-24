@@ -13,6 +13,8 @@ from ncatbot.core.event.message_segment.message_segment import (
     Forward,
 )
 import re
+
+from utils import get_date
 from .cqface import CQFACE, RCQFACE
 from .globl import ChatTy, qapi
 from config import *
@@ -167,7 +169,7 @@ async def msglfmt(
         header = f"[friend {await format_friend(cid)}]"
     elif cty == "group":
         header = f"[group {await format_group_name(cid)}]"
-    d = None
+    d = get_date().split()[0]
     t = None
     fro = None
     l = []
@@ -175,16 +177,16 @@ async def msglfmt(
         l.append(header)
     for e in events:
         infoln = ""
-        dt = datetime.fromtimestamp(e.time, tz=timezone(TZ))
-        ed = dt.date().isoformat()
-        et = dt.timetz().isoformat(timespec="minutes")[:5]
+        dt = get_date(e.time)
+        ed = dt.split()[0]
+        et = dt.split()[1]
         if ed != d:
             infoln += f"[on {ed} {et}]"
         elif et != t:
             infoln += f"[on {et}]"
-        d, t = ed, et
-        if e.sender.user_id != fro:
+        if ed != d or et != t or e.sender.user_id != fro:
             infoln += f"[from {await format_from_str(cty, cid, e)}]"
+        d, t = ed, et
         fro = e.sender.user_id
         if len(infoln) > 0:
             l.append(infoln)

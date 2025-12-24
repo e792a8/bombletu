@@ -5,7 +5,6 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from config import *
 from adapt import GiteeAIEmbeddings, ChatMux
-from mem0 import AsyncMemory
 from langfuse import get_client
 
 logger = get_log(__name__)
@@ -62,6 +61,7 @@ def make_chroma(col: str, persist_dir: str | None = None):
     # return coll
 
 
+"""
 def make_mem0() -> AsyncMemory:
     mem0_config = {
         "vector_store": {
@@ -79,3 +79,4 @@ def make_mem0() -> AsyncMemory:
     }
     mem = asyncio.run(AsyncMemory.from_config(mem0_config))
     return mem
+"""
