@@ -18,7 +18,6 @@ class BotState(TypedDict, total=False):
     idle_minutes: int | None
     idle_until: float | None
     tire_level: float
-    notes: list[str]
 
 
 @dataclass

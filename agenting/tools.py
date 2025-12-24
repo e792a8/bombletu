@@ -1,3 +1,4 @@
+import json
 from langchain.tools import tool
 from config import *
 from langchain.messages import ToolMessage
@@ -5,6 +6,7 @@ from langgraph.types import Command
 from .types import ToolRt
 from utils import get_date
 from time import time
+from pydantic import BaseModel, field_validator
 
 logger = get_log(__name__)
 
@@ -36,9 +38,24 @@ def date() -> str:
     # return "2025-10-24T01:23:25+08:00"
 
 
-@tool
+class EditNoteInput(BaseModel):
+    adds: list[str] | None
+    deletes: list[str] | None
+
+    @field_validator("adds", "deletes", mode="before")
+    @classmethod
+    def validate_list(cls, v):
+        if isinstance(v, str):
+            try:
+                parse = json.loads(v)
+                if isinstance(parse, list):
+                    return parse
+            except json.JSONDecodeError:
+                return v
+
+
+@tool(args_schema=EditNoteInput)
 async def edit_note(
-    runtime: ToolRt,
     adds: list[str] | None = None,
     deletes: list[int] | None = None,
 ):
@@ -55,27 +72,25 @@ async def edit_note(
         deletes: 需要删除的笔记条目编号列表。
     deletes和adds参数可以只使用其中一个，也可以同时使用，方便批量操作。
     """
-    notes = runtime.state.get("notes", [])
+    try:
+        with open(DATADIR + "/note.json", "r+") as f:
+            note = json.load(f)
+        if not isinstance(note, list):
+            note = []
+    except (json.JSONDecodeError, FileNotFoundError):
+        note = []
     if deletes:
-        delset = sorted(set(deletes), reverse=True)
+        delset = sorted(map(int, deletes), reverse=True)
         for num in delset:
-            if num > len(notes) or num < 1:
+            if num > len(note) or num < 1:
                 return f"待删除的条目 {num} 不存在。笔记未修改。"
-            notes.pop(num - 1)
+            note.pop(num - 1)
     if adds:
         date = get_date()
-        notes += [f"[{date}] {content}" for content in adds]
-    return Command(
-        update={
-            "messages": [
-                ToolMessage(
-                    "Success.",
-                    tool_call_id=runtime.tool_call_id,
-                )
-            ],
-            "notes": notes,
-        },
-    )
+        note += [f"[{date}] {content}" for content in adds]
+    with open(DATADIR + "/note.json", "w") as f:
+        json.dump(note, f, ensure_ascii=False, indent=2)
+    return "Success."
 
 
 LOCAL_TOOLS = [

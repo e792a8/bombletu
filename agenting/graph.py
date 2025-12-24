@@ -1,3 +1,4 @@
+import json
 from langgraph.prebuilt.tool_node import ToolNode
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -26,7 +27,14 @@ async def llm_call(state: BotState, runtime: GraphRt):
         info_inject += "\nHint: 你短时间内活动较密集，建议适时使用`idle`暂停"
     info_msg = HumanMessage(info_inject)
 
-    notes = [f"{i + 1} {n}" for i, n in enumerate(state.get("notes", []))]
+    try:
+        with open(DATADIR + "/note.json", "r") as f:
+            note = json.load(f)
+        if not isinstance(note, list):
+            note = []
+    except (json.JSONDecodeError, FileNotFoundError):
+        note = []
+    notes = [f"{i + 1} {n}" for i, n in enumerate(note)]
     if len(notes) == 0:
         notes = "当前无笔记"
     else:
@@ -72,7 +80,7 @@ def make_graph(
         [
             state_preguard,
             llm_call,
-            ("tool_node", ToolNode(tools)),
+            ("tool_node", ToolNode(tools, handle_tool_errors=True)),
             context_ng,
             state_postguard,
         ]
