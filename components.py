@@ -10,24 +10,14 @@ from langfuse import get_client
 logger = get_log(__name__)
 
 
-def collect_llms():
-    llms = []  # type: list[BaseChatModel]
-    for i in range(1, 100):
-        if ENV.get(f"LLM{i}_MODEL"):
-            llms.append(
-                ChatOpenAI(
-                    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
-                    max_retries=30,
-                    temperature=0.6,
-                    model=ENV[f"LLM{i}_MODEL"],
-                    api_key=ENV[f"LLM{i}_API_KEY"],  # type:ignore
-                    base_url=ENV[f"LLM{i}_BASE_URL"],
-                )
-            )
-    return llms
-
-
-llm = ChatMux(collect_llms())  # type: ignore
+llm = ChatOpenAI(
+    rate_limiter=InMemoryRateLimiter(requests_per_second=1),
+    max_retries=30,
+    temperature=0.6,
+    model=ENV["LLM_MODEL"],
+    api_key=ENV["LLM_API_KEY"],  # type:ignore
+    base_url=ENV["LLM_BASE_URL"],
+)
 
 embed = GiteeAIEmbeddings(
     dimensions=int(ENV["EMBED_DIMENSIONS"]),
