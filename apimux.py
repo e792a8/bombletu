@@ -14,7 +14,8 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
 
 fapi = FastAPI()
-client = httpx.AsyncClient()
+timeout = httpx.Timeout(connect=10, read=20, write=20, pool=30)
+client = httpx.AsyncClient(timeout=timeout)
 
 
 def collect_llms():
@@ -23,6 +24,7 @@ def collect_llms():
         if environ.get(f"LLM{i}_MODEL"):
             llms.append(
                 {
+                    "index": i,
                     "model": environ.get(f"LLM{i}_MODEL"),
                     "api_key": environ.get(f"LLM{i}_API_KEY"),
                     "base_url": environ.get(f"LLM{i}_BASE_URL"),
@@ -38,11 +40,11 @@ async def request_llm(request: Request, llm: dict):
     method = request.method
     path = request.path_params["path"]
     body = await request.json() if await request.body() else None
-    logger.info(f"requesting {len(llms)} models")
+    logger.info(f"requesting llm{llm['index']}")
     headers = httpx.Headers()
     headers["Authorization"] = f"Bearer {llm['api_key']}"
     headers["Content-Type"] = "application/json"
-    if isinstance(body, dict):
+    if isinstance(body, dict) and body.get("model") is not None:
         body["model"] = llm["model"]
     resp = await client.request(
         method,
@@ -54,7 +56,7 @@ async def request_llm(request: Request, llm: dict):
     await resp.aread()
     if resp.status_code != 200 or resp.json().get("error"):
         logger.error(
-            f"request for llm {llm} error: {resp.status_code} {resp.content.decode()}"
+            f"request for llm{llm['index']} error: {resp.status_code} {resp.content.decode()}"
         )
         return None
     ret = resp.json()
@@ -67,7 +69,7 @@ async def api_v1(request: Request):
     logger.info(f"requesting {len(llms)} models")
     for llm in llms:
         task = request_llm(request, llm)
-        pending.append(asyncio.create_task(task))
+        pending.append(asyncio.create_task(task, name=f"llm{llm['index']}-request"))
     result = None
     exc = []
     while True:
@@ -85,6 +87,7 @@ async def api_v1(request: Request):
             break
     for p in pending:
         p.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
     if result is not None:
         return result
     else:
