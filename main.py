@@ -35,7 +35,8 @@ async def alarm(e: BaseException, retry_delay: float):
     # )
     await asyncio.sleep(1)
     await qbot.api.send_group_text(
-        CON, f"[CQ:at,qq=1571224208] {GRP} {traceback.format_exception(e)} delay: {retry_delay}"
+        CON,
+        f"[CQ:at,qq=1571224208] {GRP} {traceback.format_exception(e)} delay: {retry_delay}",
     )
 
 
@@ -66,7 +67,12 @@ async def amain():
 
 
 def main():
-    asyncio.run(amain())
+    try:
+        asyncio.run(amain())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        qbot.bot_exit()
 
 
 if __name__ == "__main__":

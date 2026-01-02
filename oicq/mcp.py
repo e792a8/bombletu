@@ -94,7 +94,10 @@ async def amain():
 
 
 def main():
-    asyncio.run(amain())
+    try:
+        asyncio.run(amain())
+    finally:
+        qbot.bot_exit()
 
 
 if __name__ == "__main__":
