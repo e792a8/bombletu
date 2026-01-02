@@ -15,7 +15,6 @@ logger.addHandler(logging.StreamHandler())
 
 fapi = FastAPI()
 timeout = httpx.Timeout(connect=10, read=20, write=20, pool=30)
-client = httpx.AsyncClient(timeout=timeout)
 
 
 def collect_llms():
@@ -46,21 +45,22 @@ async def request_llm(request: Request, llm: dict):
     headers["Content-Type"] = "application/json"
     if isinstance(body, dict) and body.get("model") is not None:
         body["model"] = llm["model"]
-    resp = await client.request(
-        method,
-        llm["base_url"].rstrip("/") + "/" + path,
-        json=body,
-        headers=headers,
-        timeout=60,
-    )
-    await resp.aread()
-    if resp.status_code != 200 or resp.json().get("error"):
-        logger.error(
-            f"request for llm{llm['index']} error: {resp.status_code} {resp.content.decode()}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.request(
+            method,
+            llm["base_url"].rstrip("/") + "/" + path,
+            json=body,
+            headers=headers,
+            timeout=60,
         )
-        return None
-    ret = resp.json()
-    return ret
+        await resp.aread()
+        if resp.status_code != 200 or resp.json().get("error"):
+            logger.error(
+                f"request for llm{llm['index']} error: {resp.status_code} {resp.content.decode()}"
+            )
+            return None
+        ret = resp.json()
+        return ret
 
 
 @fapi.api_route("/v1/{path:path}", methods=["GET", "POST"])
