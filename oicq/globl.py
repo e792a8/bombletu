@@ -4,7 +4,7 @@ from ncatbot.core.client import BotClient
 from ncatbot.core.event.message import GroupMessageEvent, PrivateMessageEvent
 from ncatbot.core.api import NapCatAPIError
 from sys import argv
-from config import CON, USR
+from config import CON, USR, ENV
 from langfuse import get_client
 from logging import getLogger
 
@@ -21,13 +21,15 @@ else:
 
 langfuse = get_client()
 
-ChatTy = Literal["friend", "group"]
+ChatTy = Literal["private", "group"]
 
 
 async def real_friend_id_list() -> list[str]:
     lst = await qapi.get_friend_list()
     for i, u in enumerate(lst):
-        if str(u["user_id"]) == USR:
+        if str(u["user_id"]) == USR or str(u["user_id"]) in ENV.get(
+            "Q_USR_BAN", ""
+        ).split(","):
             del lst[i]
             break
     return [str(u["user_id"]) for u in lst]
@@ -36,9 +38,8 @@ async def real_friend_id_list() -> list[str]:
 async def real_group_id_list() -> list[str]:
     lst = await qapi.get_group_list()
     for i, g in enumerate(lst):
-        if g == CON:
+        if g == CON or g in ENV.get("Q_GRP_BAN", "").split(","):
             del lst[i]
-            break
     return lst  # type: ignore
 
 

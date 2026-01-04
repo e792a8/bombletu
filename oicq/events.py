@@ -15,7 +15,9 @@ eventchan = create_channel(create_sliding_buffer(100))  # type: ignore
 
 @qbot.on_group_message()  # type: ignore
 async def group_message_handler(event: GroupMessageEvent):
-    if event.group_id != CON:
+    if event.group_id != CON and event.group_id not in ENV.get("Q_GRP_BAN", "").split(
+        ","
+    ):
         if event.message.is_user_at(USR):
             logger.info(f"提及我的消息 {event.raw_message} 送入eventchan")
             await eventchan.put(event)
@@ -39,7 +41,7 @@ async def format_events(events) -> str:
             if ev.message.is_user_at(USR):
                 lines.append(f"Notify: 提及你的群消息: {await format_msg_oneline(ev)}")
             else:
-                lines.append(f"Event: 实时群消息: {await format_msg_oneline(ev)}")
+                lines.append(f"Event: 观望的群消息: {await format_msg_oneline(ev)}")
         elif isinstance(ev, PrivateMessageEvent):
             lines.append(f"Notify: 好友私信消息: {await format_msg_oneline(ev)}")
         else:

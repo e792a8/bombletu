@@ -57,7 +57,7 @@ async def format_group_name(group: str) -> str:
     return f"{group} ({name})"
 
 
-async def format_friend(uid: str) -> str:
+async def format_user(uid: str) -> str:
     """格式化为`ID (昵称)`的形式"""
     u = None
     name = ""
@@ -123,7 +123,7 @@ async def format_msg(msg: MessageArray, group_id: str | None = None) -> str:
             if group_id:
                 m += f"[:at {await format_group_member(group_id, seg.qq)}]"
             else:
-                m += f"[:at {await format_friend(seg.qq)}]"
+                m += f"[:at {await format_user(seg.qq)}]"
         elif isinstance(seg, Face):
             m += f"[:face {format_face(seg.id)}]"
         elif isinstance(seg, Reply):
@@ -143,7 +143,7 @@ async def format_msg_oneline(e: GroupMessageEvent | PrivateMessageEvent) -> str:
     if isinstance(e, GroupMessageEvent):
         return f"[group {await format_group_name(e.group_id)}][from {await format_group_member(e.group_id, e.sender.user_id)}]{await format_msg(e.message, e.group_id)}"
     elif isinstance(e, PrivateMessageEvent):
-        return f"[friend {await format_friend(e.sender.user_id)}]{await format_msg(e.message)}"
+        return f"[private {await format_user(e.sender.user_id)}]{await format_msg(e.message)}"
 
 
 async def format_from_str(
@@ -165,8 +165,8 @@ async def msglfmt(
     with_id: bool | str,
 ):
     header = None
-    if cty == "friend":
-        header = f"[friend {await format_friend(cid)}]"
+    if cty == "private":
+        header = f"[private {await format_user(cid)}]"
     elif cty == "group":
         header = f"[group {await format_group_name(cid)}]"
     d = get_date().split()[0]

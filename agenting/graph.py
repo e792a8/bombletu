@@ -27,31 +27,14 @@ async def llm_call(state: BotState, runtime: GraphRt):
         info_inject += "\nHint: 你短时间内活动较密集，建议适时使用`idle`暂停"
     info_msg = HumanMessage(info_inject)
 
-    try:
-        with open(DATADIR + "/note.json", "r") as f:
-            note = json.load(f)
-        if not isinstance(note, list):
-            note = []
-    except (json.JSONDecodeError, FileNotFoundError):
-        note = []
-    notes = [f"{i + 1} {n}" for i, n in enumerate(note)]
-    if len(notes) == 0:
-        notes = "当前无笔记"
-    else:
-        notes = "\n".join(notes)
-    notes_msg = HumanMessage(
-        f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n\n{notes}"
-    )
-
-    last_msg = HumanMessage("分析当前状态，规划或继续你接下来的行动:")
-
     llm_with_tools = llm.bind_tools(runtime.context.tools)
     msgs = state.get("messages", [])
-    prompts_send = (
-        initial_prompts(runtime.context) + msgs + [notes_msg, info_msg, last_msg]
-    )
+    prompts_send = initial_prompts(runtime.context, state) + msgs + [info_msg]
 
-    llm_return = await llm_with_tools.ainvoke(prompts_send)
+    while True:
+        llm_return = await llm_with_tools.ainvoke(prompts_send)
+        if len(llm_return.tool_calls) > 0:
+            break
     messages_update = [info_msg, llm_return]
     return BotState(messages=messages_update)
 
@@ -96,7 +79,7 @@ def make_graph(
 """
 def make_agent_deep(tools: list[BaseTool]):
     from deepagents import create_deep_agent
-    from deepagents.backends import FilesystemBackend
+    from deepagents.backends imporcontextt FilesystemBackend
     from langchain.agents.structured_output import ToolStrategy
 
     agent = create_deep_agent(

@@ -7,7 +7,7 @@ from .globl import (
     real_group_id_list,
     ChatTy,
 )
-from .msgfmt import format_friend, format_group_name
+from .msgfmt import format_user, format_group_name
 from ncatbot.core.event.message import PrivateMessageEvent, GroupMessageEvent
 
 read_status = {}
@@ -41,7 +41,7 @@ async def init_read_status():
         await clear_unread("group", g)  # type: ignore
     friends = await qapi.get_friend_list()
     for u in friends:
-        await clear_unread("friend", u["user_id"])
+        await clear_unread("private", u["user_id"])
 
 
 def calc_unread(rd: str, msgs: list[PrivateMessageEvent] | list[GroupMessageEvent]):
@@ -55,8 +55,8 @@ def calc_unread(rd: str, msgs: list[PrivateMessageEvent] | list[GroupMessageEven
 
 async def get_chats_info():
     friends = await real_friend_id_list()
-    friends_disp = [f"[friend {await format_friend(f)}]" for f in friends]
-    friends_msgs = [await get_messages_wrapped("friend", f, 0, 110) for f in friends]
+    friends_disp = [f"[private {await format_user(f)}]" for f in friends]
+    friends_msgs = [await get_messages_wrapped("private", f, 0, 110) for f in friends]
     friends_sum = []
     friends_sum_inactive = []
 
@@ -71,12 +71,12 @@ async def get_chats_info():
             unread = 0
             if len(fm) > 0:
                 active = fm[-1].time
-                rd = read_status.get(f"friend {f}", "0")
+                rd = read_status.get(f"private {f}", "0")
                 unread = calc_unread(rd, fm)
             if active:
-                friends_sum.append(("friend", f, fd, active, unread))
+                friends_sum.append(("private", f, fd, active, unread))
             else:
-                friends_sum_inactive.append(("friend", f, fd, active, unread))
+                friends_sum_inactive.append(("private", f, fd, active, unread))
         for g, gd, gm in zip(groups, groups_disp, groups_msgs):
             active = None
             unread = 0
@@ -99,7 +99,7 @@ async def get_chats_info():
         else:
             adate, atime = get_date(x[3]).split()
             ac = f"[{atime}]" if nowdate == adate else f"[{adate} {atime}]"
-        unr = f"[unread {'99+' if x[4] > 99 else x[4]}]" if x[4] > 0 else ""
+        unr = f"[unread {'99+' if x[4] > 99 else x[4]}]"
         total.append(f"{disp}{ac}{unr}")
     return "\n".join(total)
 

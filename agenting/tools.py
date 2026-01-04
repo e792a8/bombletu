@@ -15,7 +15,7 @@ logger = get_log(__name__)
 def idle(runtime: ToolRt, minutes: int) -> Command:
     """暂停一段时间，参数为分钟数。
     暂停可以被一些特别事件中断，使你提前恢复运行。
-    重要：必须单独调用，不可与其他工具并行调用。"""
+    """
     return Command(
         update={
             "messages": [
