@@ -13,7 +13,7 @@ from ncatbot.core.event.message_segment.message_segment import (
     Forward,
 )
 import re
-
+import json
 from utils import get_date
 from .cqface import CQFACE, RCQFACE
 from .globl import ChatTy, qapi
@@ -22,6 +22,10 @@ from config import *
 logger = get_log(__name__)
 
 MSGP = re.compile(r"(\[\:.*?\])")
+
+
+def quote(s: str) -> str:
+    return json.dumps(s, ensure_ascii=False)
 
 
 def format_face(id: str):
@@ -43,7 +47,7 @@ async def format_group_member(group: str, uid: str) -> str:
         name = u.card or u.nickname
     except NapCatAPIError as e:
         logger.error(f"napcat api: {e}")
-    return f"{'ME ' if uid == USR else ''}{uid} ({name})"
+    return f"{'ME ' if uid == USR else ''}{uid} ({quote(name)})"
 
 
 async def format_group_name(group: str) -> str:
@@ -54,7 +58,7 @@ async def format_group_name(group: str) -> str:
         name = g.group_remark or g.group_name
     except NapCatAPIError as e:
         logger.error(f"napcat api: {e}")
-    return f"{group} ({name})"
+    return f"{group} ({quote(name)})"
 
 
 async def format_user(uid: str) -> str:
@@ -68,12 +72,12 @@ async def format_user(uid: str) -> str:
                 break
         if not u:
             u = await qapi.get_stranger_info(uid)
-        name = u.get("remark")
+        name = u.get("remark", "")
         if not name:
             name = u.get("nickname", "")
     except NapCatAPIError as e:
         logger.error(f"napcat api: {e}")
-    return f"{uid} ({name})"
+    return f"{uid} ({quote(name)})"
 
 
 def parse_face(name: str):

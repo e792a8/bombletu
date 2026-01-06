@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 import subprocess
 from config import *
-from .msgfmt import format_msg, parse_msg, msglfmt
+from .msgfmt import format_msg, parse_msg, msglfmt, quote
 from .globl import ChatTy, get_messages_wrapped, mcp, qapi
 from .status import clear_unread, get_chats_info, set_group_active
 from deepagents import create_deep_agent
@@ -143,7 +143,7 @@ async def unwrap_forward(forward_id: str) -> str:
     lns.append(f"[forward {forward_id}]")
     last_from = None
     for node in msg.content:
-        cur_from = f"[from {node.user_id} ({node.nickname})]"
+        cur_from = f"[from ({quote(node.nickname)})]"
         if cur_from != last_from:
             lns.append(cur_from)
             last_from = cur_from

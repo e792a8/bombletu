@@ -23,9 +23,6 @@ def initial_prompts(context: BotContext, state: BotState):
         notes = "当前无笔记"
     else:
         notes = "\n".join(notes)
-    notes_msg = HumanMessage(
-        f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n\n{notes}"
-    )
 
     return [
         SystemMessage(
@@ -33,8 +30,8 @@ def initial_prompts(context: BotContext, state: BotState):
                 [
                     system_prompt,
                     context.applet_instructions,
-                    f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n\n{notes}",
-                    f"之前的交互历史摘要:\n\n{state.get('summary')}",
+                    f"当前你的笔记内容(按需使用`edit_note`编辑笔记):\n```\n{notes}\n```\n",
+                    f"之前的交互历史摘要:\n```\n{state.get('summary')}\n```\n",
                 ]
             )
         ),
