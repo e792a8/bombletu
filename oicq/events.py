@@ -6,57 +6,38 @@ from .msgfmt import format_msg_oneline
 from time import time
 from utils import get_date
 from asyncio_channel import create_channel, create_sliding_buffer
-from .status import get_group_active
+from .status import get_chats_info
+import asyncio
 
 logger = getLogger(__name__)
 
 eventchan = create_channel(create_sliding_buffer(100))  # type: ignore
 
+eventflag = asyncio.Event()  # allows false positive
+
 
 @qbot.on_group_message()  # type: ignore
 async def group_message_handler(event: GroupMessageEvent):
-    if event.group_id != CON and event.group_id not in ENV.get("Q_GRP_BAN", "").split(
-        ","
-    ):
-        if event.message.is_user_at(USR):
-            logger.info(f"提及我的消息 {event.raw_message} 送入eventchan")
-            await eventchan.put(event)
-        elif time() < await get_group_active(event.group_id):
-            logger.info(f"观望的消息 {event.raw_message} 送入eventchan")
-            await eventchan.put(event)
+    logger.info(f"群消息: {event}")
+    eventflag.set()
 
 
 @qbot.on_private_message()  # type: ignore
 async def private_message_handler(event: PrivateMessageEvent):
-    friends = await real_friend_id_list()
-    if event.sender.user_id in friends:
-        logger.info(f"好友消息 {event.raw_message} 送入eventchan")
-        await eventchan.put(event)
+    logger.info(f"私信消息: {event}")
+    eventflag.set()
 
 
-async def format_events(events) -> str:
-    lines = []
-    for ev in events:
-        if isinstance(ev, GroupMessageEvent):
-            if ev.message.is_user_at(USR):
-                lines.append(f"Notify: 提及你的群消息: {await format_msg_oneline(ev)}")
-            else:
-                lines.append(f"Event: 观望的群消息: {await format_msg_oneline(ev)}")
-        elif isinstance(ev, PrivateMessageEvent):
-            lines.append(f"Notify: 好友私信消息: {await format_msg_oneline(ev)}")
-        else:
-            lines.append(f"Notify: {ev}")
-    return "\n".join(lines)
-
-
-async def wait_events(until: float) -> str | None:  # FIXME
+async def wait_events(until: float) -> str | None:
+    # should omit false positive
     while True:
         timeout = min(5, max(1, until - time()))
-        if await eventchan.item(timeout=timeout):
-            break
-        if time() > until:
-            return None
-    events = []
-    while ev := await eventchan.take(timeout=0):
-        events.append(ev)
-    return await format_events(events)
+        chats = await get_chats_info(important_only=True)
+        if len(chats.strip()) > 0:
+            return "重点消息通知:\n  " + chats.replace("\n", "\n  ")
+        try:
+            await asyncio.wait_for(eventflag.wait(), timeout)
+            eventflag.clear()
+        except asyncio.TimeoutError:
+            if time() > until:
+                return None

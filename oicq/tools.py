@@ -6,9 +6,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 import subprocess
 from config import *
+from .events import wait_events
 from .msgfmt import format_msg, parse_msg, msglfmt, quote
 from .globl import ChatTy, get_messages_wrapped, mcp, qapi
-from .status import clear_unread, get_chats_info, set_group_active
+from .status import clear_unread, get_chats_info, set_group_watch
 from deepagents import create_deep_agent
 from components import llm
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -20,7 +21,7 @@ logger = getLogger(__name__)
 async def get_chats():
     """
     查看所有可用的会话列表，及各个会话最近活跃时间、未读消息数量等信息。
-    返回的每行代表一个聊天会话，带有由`[]`包围的多个字段，第一个字段为`[private 用户ID (用户昵称)]`表示一个好友私信会话，或`[group 群ID (群名称)]`表示一个群组会话。第二个字段表示该会话最新消息的时间，如没有消息则省略。第三个字段表示该会话未读消息数量，如无未读消息则省略。
+    返回的每行代表一个聊天会话，带有由`[]`包围的多个字段，第一个字段为`[private 用户ID (用户昵称)]`表示一个好友私信会话，或`[group 群ID (群名称)]`表示一个群组会话。后续字段包含会话最新消息的时间、未读消息数量、重点提醒等。
     """
     return await get_chats_info()
 
@@ -28,14 +29,14 @@ async def get_chats():
 @mcp.tool()
 async def watch_group(group_id: str, minutes: int):
     """
-    观望群消息。
+    关注群消息。
     参数：
-        group_id: 观望的群聊ID。
-        minutes: 观望的分钟数。
+        group_id: 关注的群聊ID。
+        minutes: 关注的分钟数。
     调用该工具后`minutes`分钟内，群聊`group_id`中的任何未提及你的消息都会将你从暂停状态唤醒。
     你可以在需要实时等待群消息时使用该工具，例如在向群中发送消息的同时使用该工具，及时获知群友对你发言的反馈。
     """
-    await set_group_active(group_id, time() + 60 * minutes)
+    await set_group_watch(group_id, time() + 60 * minutes)
     return "Success."
 
 
@@ -65,28 +66,30 @@ async def send(chat_type: ChatTy, chat_id: str, content: str) -> str:
 
 @mcp.tool()
 async def get_messages(
-    chat_type: ChatTy, chat_id: str, fro: int, to: int, with_id: bool = False
+    chat_type: ChatTy, chat_id: str, limit: int, offset: int = 0, with_id: bool = False
 ) -> str:
     """
     查阅消息记录。
     参数:
         chat_type: 查阅的聊天会话类型，为"private"代表好友私聊或"group"代表群聊。
         chat_id: 查阅的聊天会话ID，如chat_type="private"则为用户ID，chat_type="group"则为群组ID。
-        fro: 消息序号区间的开始。
-        to: 消息序号区间的结束。
+        limit: 获取消息的数量。
+        offset: 消息记录起始位置，最新消息为0，由新到旧递增。
         with_id: 是否附带消息ID。
     消息序号规则：最新的消息序号为1，序号由新到旧递增，返回的列表按由旧到新的顺序排列。
-    例：`get_messages(chat_type="private",chat_id="111",fro=10,to=1)`获取与好友"111"私聊会话的最新10条消息；`get_messages(chat_type="group",chat_id="222",fro=30,to=21)`获取群聊"222"的最后第30到第21条消息。
+    例：
+        `get_messages(chat_type="private",chat_id="111",offset=0,limit=10)` 获取与好友"111"私聊会话的最新10条消息；
+        `get_messages(chat_type="group",chat_id="222",offset=20,limit=15)` 获取群聊"222"的最后第35到第21条消息。
     参数with_id控制是否附带消息ID，如为真则每条消息的行首将带有 `[id 消息ID]` 指示。
-    调用该工具读取到最新消息（即fro=1或to=1）时，该会话的未读消息计数将清零；如没有读取最新消息，则不影响未读消息计数。
+    调用该工具读取到最新消息（即offset=0）时，该会话的未读消息计数将清零；如没有读取最新消息，则不影响未读消息计数。
     """
-    if to > fro:
-        fro, to = to, fro
-    logger.info(f"get_messages: {fro}, {to}, {with_id}")
-    if to == 1:
+    logger.info(f"get_messages: {offset}, {limit}, {with_id}")
+    if offset == 0:
         await clear_unread(chat_type, chat_id)
     try:
-        msgs = (await get_messages_wrapped(chat_type, chat_id, 0, fro))[: fro - to + 1]
+        msgs = (await get_messages_wrapped(chat_type, chat_id, 0, offset + limit))[
+            :limit
+        ]
         return await msglfmt(
             chat_type,
             chat_id,
@@ -216,6 +219,21 @@ async def ask_image(file_name: str, prompt="详细描述图片内容") -> str:
         logger.error(f"模型调用出错 {e}")
         return "Error: 模型调用出错"
     return ret.text
+
+
+# @mcp.tool()
+async def wait_for_event(minutes: int) -> str:
+    """
+    等待来自OICQ的重要消息，包括好友私信消息、群聊中提及你的消息和观望中群聊的普通消息。
+    参数:
+        minutes: 等待的分钟数。
+    """
+    until = time() + 60 * minutes
+    ret = await wait_events(until)
+    if ret:
+        return ret
+    else:
+        return "No event."
 
 
 def get_mcp_config():

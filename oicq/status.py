@@ -1,4 +1,6 @@
 import asyncio
+from time import time
+from config import USR
 from utils import get_date
 from .globl import (
     get_messages_wrapped,
@@ -13,18 +15,18 @@ from ncatbot.core.event.message import PrivateMessageEvent, GroupMessageEvent
 read_status = {}
 read_status_lock = asyncio.locks.Lock()
 
-group_active = {}
-group_active_lock = asyncio.locks.Lock()
+group_watch = {}
+group_watch_lock = asyncio.locks.Lock()
 
 
-async def set_group_active(group: str, until: float):
-    async with group_active_lock:
-        group_active[group] = until
+async def set_group_watch(group: str, until: float):
+    async with group_watch_lock:
+        group_watch[group] = until
 
 
-async def get_group_active(group: str) -> float:
-    async with group_active_lock:
-        return group_active.get(group, 0)
+async def get_group_watch(group: str) -> float:
+    async with group_watch_lock:
+        return group_watch.get(group, 0)
 
 
 async def clear_unread(cty: ChatTy, cid: str):
@@ -32,16 +34,16 @@ async def clear_unread(cty: ChatTy, cid: str):
         last = await get_messages_wrapped(cty, cid, 0, 1)
         if len(last) == 0:
             return
-        read_status[f"{cty} {cid}"] = last[0].message_id
+        read_status[(cty, cid)] = last[0].message_id
 
 
 async def init_read_status():
-    groups = await qapi.get_group_list()
+    groups = await real_group_id_list()
     for g in groups:
         await clear_unread("group", g)  # type: ignore
-    friends = await qapi.get_friend_list()
+    friends = await real_friend_id_list()
     for u in friends:
-        await clear_unread("private", u["user_id"])
+        await clear_unread("private", u)
 
 
 def calc_unread(rd: str, msgs: list[PrivateMessageEvent] | list[GroupMessageEvent]):
@@ -53,57 +55,97 @@ def calc_unread(rd: str, msgs: list[PrivateMessageEvent] | list[GroupMessageEven
     return len(msgs)
 
 
-async def get_chats_info():
+async def get_unread(cty: ChatTy, cid: str) -> tuple[int, int]:  # (unread, mention)
+    msgs = await get_messages_wrapped(cty, cid, 0, 110)
+    unread = len(msgs)
+    mention = 0
+    if unread == 0:
+        return 0, 0
+    async with read_status_lock:
+        rd = read_status.get((cty, cid), "0")
+    for i, m in enumerate(reversed(msgs)):
+        if m.message.is_user_at(USR):
+            mention += 1
+        if m.message_id == rd:
+            unread = i
+            break
+    return unread, mention
+
+
+async def collect_unread() -> tuple[int, int, int, int]:
+    """(private, mention, watch, group)"""
     friends = await real_friend_id_list()
-    friends_disp = [f"[private {await format_user(f)}]" for f in friends]
-    friends_msgs = [await get_messages_wrapped("private", f, 0, 110) for f in friends]
+    private = 0
+    for f in friends:
+        private += (await get_unread("private", f))[0]
+    groups = await real_group_id_list()
+    mention = 0
+    watch = 0
+    group = 0
+    now = time()
+    for g in groups:
+        u, m = await get_unread("group", g)
+        if now < await get_group_watch(g):
+            watch += u
+        group += u
+        mention += m
+    return private, mention, watch, group
+
+
+async def get_chats_info(important_only=False):
+    now = time()
+
+    friends = await real_friend_id_list()
     friends_sum = []
     friends_sum_inactive = []
+    for f in friends:
+        unread, _ = await get_unread("private", f)
+        msg = await get_messages_wrapped("private", f, 0, 1)
+        active = msg[0].time if len(msg) else None
+        if active:
+            friends_sum.append(("private", f, active, unread))
+        else:
+            friends_sum_inactive.append(("private", f, active, unread))
 
     groups = await real_group_id_list()
-    groups_disp = [f"[group {await format_group_name(g)}]" for g in groups]
-    groups_msgs = [await get_messages_wrapped("group", g, 0, 110) for g in groups]
     groups_sum = []
     groups_sum_inactive = []
-    async with read_status_lock:
-        for f, fd, fm in zip(friends, friends_disp, friends_msgs):
-            active = None
-            unread = 0
-            if len(fm) > 0:
-                active = fm[-1].time
-                rd = read_status.get(f"private {f}", "0")
-                unread = calc_unread(rd, fm)
-            if active:
-                friends_sum.append(("private", f, fd, active, unread))
-            else:
-                friends_sum_inactive.append(("private", f, fd, active, unread))
-        for g, gd, gm in zip(groups, groups_disp, groups_msgs):
-            active = None
-            unread = 0
-            if len(gm) > 0:
-                active = gm[-1].time
-                rd = read_status.get(f"group {g}", "0")
-                unread = calc_unread(rd, gm)
-            if active:
-                groups_sum.append(("group", g, gd, active, unread))
-            else:
-                groups_sum_inactive.append(("group", g, gd, active, unread))
-    friends_sum.sort(key=lambda x: -x[3])
-    groups_sum.sort(key=lambda x: -x[3])
-    total = []
-    nowdate, nowtime = get_date().split()
-    for x in friends_sum + groups_sum + friends_sum_inactive + groups_sum_inactive:
-        disp = x[2]
-        if not x[3]:
-            ac = ""
+    for g in groups:
+        unread, mention = await get_unread("group", g)
+        msg = await get_messages_wrapped("group", g, 0, 1)
+        active = msg[0].time if len(msg) else None
+        if active:
+            groups_sum.append(("group", g, active, unread, mention))
         else:
-            adate, atime = get_date(x[3]).split()
-            ac = f"[{atime}]" if nowdate == adate else f"[{adate} {atime}]"
-        unr = f"[unread {'99+' if x[4] > 99 else x[4]}]"
-        total.append(f"{disp}{ac}{unr}")
+            groups_sum_inactive.append(("group", g, active, unread, mention))
+
+    friends_sum.sort(key=lambda x: -x[2])
+    groups_sum.sort(key=lambda x: -x[2])
+    total = []
+    for x in friends_sum + groups_sum + friends_sum_inactive + groups_sum_inactive:
+        if x[0] == "private":
+            _, uid, active, unread = x
+            if important_only and unread <= 0:
+                continue
+            disp = f"[private {await format_user(uid)}][最近活跃时间: {get_date(active) if active else '无消息'}][未读: {'99+' if unread > 99 else unread}][提醒: 好友私信消息]"
+        else:
+            _, gid, active, unread, mention = x
+            watch = await get_group_watch(gid)
+            if important_only and mention <= 0 and not (unread > 0 and now < watch):
+                continue
+            disp = f"[group {await format_group_name(gid)}][最近活跃时间: {get_date(active) if active else '无消息'}][未读: {'99+' if unread > 99 else unread}]"
+            if mention > 0:
+                disp += f"[提醒: 提及你的消息: {'99+' if mention > 99 else mention}]"
+            if unread > 0 and now < watch:
+                disp += f"[提醒: 关注中的群]"
+        total.append(disp)
+
     return "\n".join(total)
 
 
 async def get_status() -> str:
-    # TODO idk what to do
+    private, mention, watch, group = await collect_unread()
+    minor = group - mention - watch
+    if minor > 0:
+        return f"次要消息: {'99+' if minor > 99 else minor}"
     return ""

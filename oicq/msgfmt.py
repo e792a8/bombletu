@@ -173,24 +173,19 @@ async def msglfmt(
         header = f"[private {await format_user(cid)}]"
     elif cty == "group":
         header = f"[group {await format_group_name(cid)}]"
-    d = get_date().split()[0]
-    t = None
+    d = None
     fro = None
     l = []
     if header:
         l.append(header)
     for e in events:
         infoln = ""
-        dt = get_date(e.time)
-        ed = dt.split()[0]
-        et = dt.split()[1]
+        ed = get_date(e.time)
         if ed != d:
-            infoln += f"[on {ed} {et}]"
-        elif et != t:
-            infoln += f"[on {et}]"
-        if ed != d or et != t or e.sender.user_id != fro:
+            infoln += f"[on {ed}]"
+        if ed != d or e.sender.user_id != fro:
             infoln += f"[from {await format_from_str(cty, cid, e)}]"
-        d, t = ed, et
+        d = ed
         fro = e.sender.user_id
         if len(infoln) > 0:
             l.append(infoln)
