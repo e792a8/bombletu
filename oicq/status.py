@@ -127,7 +127,9 @@ async def get_chats_info(important_only=False):
             _, uid, active, unread = x
             if important_only and unread <= 0:
                 continue
-            disp = f"[private {await format_user(uid)}][最近活跃时间: {get_date(active) if active else '无消息'}][未读: {'99+' if unread > 99 else unread}][提醒: 好友私信消息]"
+            disp = f"[private {await format_user(uid)}][最近活跃时间: {get_date(active) if active else '无消息'}][未读: {'99+' if unread > 99 else unread}]"
+            if unread > 0:
+                disp += "[提醒: 好友私信消息]"
         else:
             _, gid, active, unread, mention = x
             watch = await get_group_watch(gid)
