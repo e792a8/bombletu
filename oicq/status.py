@@ -64,11 +64,11 @@ async def get_unread(cty: ChatTy, cid: str) -> tuple[int, int]:  # (unread, ment
     async with read_status_lock:
         rd = read_status.get((cty, cid), "0")
     for i, m in enumerate(reversed(msgs)):
-        if m.message.is_user_at(USR):
-            mention += 1
         if m.message_id == rd:
             unread = i
             break
+        if m.message.is_user_at(USR):
+            mention += 1
     return unread, mention
 
 
