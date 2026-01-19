@@ -5,6 +5,7 @@ from logging import getLogger
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 import subprocess
+from agenting.types import BotDeps
 from config import *
 from .events import wait_events
 from .msgfmt import format_msg, parse_msg, msglfmt, quote
@@ -13,11 +14,14 @@ from .status import clear_unread, get_chats_info, set_group_watch
 from deepagents import create_deep_agent
 from components import llm
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from pydantic_ai.toolsets import FunctionToolset
 
 logger = getLogger(__name__)
 
+oicq_toolset = FunctionToolset[BotDeps]()
 
-@mcp.tool()
+
+@oicq_toolset.tool
 async def get_chats():
     """
     查看所有可用的会话列表，及各个会话最近活跃时间、未读消息数量等信息。
@@ -26,7 +30,7 @@ async def get_chats():
     return await get_chats_info()
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def watch_group(group_id: str, minutes: int):
     """
     关注群消息。
@@ -40,7 +44,7 @@ async def watch_group(group_id: str, minutes: int):
     return "Success."
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def send(chat_type: ChatTy, chat_id: str, content: str) -> str:
     """
     发送消息。
@@ -64,7 +68,7 @@ async def send(chat_type: ChatTy, chat_id: str, content: str) -> str:
         return f"Error: 软件故障"
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def get_messages(
     chat_type: ChatTy, chat_id: str, limit: int, offset: int = 0, with_id: bool = False
 ) -> str:
@@ -101,7 +105,7 @@ async def get_messages(
         return f"Error: 软件故障"
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def get_messages_by_id(
     chat_type: ChatTy, chat_id: str, message_id: str, before: int = 0, after: int = 0
 ) -> str:
@@ -130,7 +134,7 @@ async def get_messages_by_id(
         return "Error: 软件故障"
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def unwrap_forward(forward_id: str) -> str:
     """
     展开查看`[:forward]`类型消息的详情。
@@ -154,7 +158,7 @@ async def unwrap_forward(forward_id: str) -> str:
     return "\n".join(lns)
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def forward_messages(chat_type: ChatTy, chat_id: str, message_ids: list[str]):
     """
     将多条消息合并为一个消息列表并转发到目标聊天会话。
@@ -184,7 +188,7 @@ visual_model = ChatOpenAI(
 )
 
 
-@mcp.tool()
+@oicq_toolset.tool
 async def ask_image(file_name: str, prompt="详细描述图片内容") -> str:
     """
     向视觉模型询问关于某个图像的问题。

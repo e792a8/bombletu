@@ -45,10 +45,14 @@ INSTRUCTIONS = f"""
 """
 
 
+async def get_instructions():
+    add_prompts = langfuse.get_prompt("oicq-add")
+    return INSTRUCTIONS.format(add_prompts=add_prompts.prompt)
+
+
 @mcp.prompt()
 async def instructions():
-    add_prompts = langfuse.get_prompt("oicq-add")
-    return pt(INSTRUCTIONS.format(add_prompts=add_prompts.prompt))
+    return pt(await get_instructions())
 
 
 @mcp.prompt()

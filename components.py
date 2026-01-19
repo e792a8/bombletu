@@ -6,9 +6,28 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from config import *
 from adapt import GiteeAIEmbeddings, ChatMux
 from langfuse import get_client
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.embeddings.openai import OpenAIEmbeddingModel
+from pydantic_ai import Embedder
+from pydantic_ai.providers.openai import OpenAIProvider
 
 logger = get_log(__name__)
 
+chat_model = OpenAIChatModel(
+    model_name=ENV["LLM_MODEL"],
+    provider=OpenAIProvider(base_url=ENV["LLM_BASE_URL"], api_key=ENV["LLM_API_KEY"]),
+    settings={"temperature": 0.8},
+)
+
+embed_model = OpenAIEmbeddingModel(
+    model_name=ENV["EMBED_MODEL"],
+    provider=OpenAIProvider(
+        base_url=ENV["EMBED_BASE_URL"], api_key=ENV["EMBED_API_KEY"]
+    ),
+    settings={"dimensions": int(ENV["EMBED_DIMENSIONS"])},
+)
+
+embedder = Embedder(embed_model)
 
 llm = ChatOpenAI(
     rate_limiter=InMemoryRateLimiter(requests_per_second=1),

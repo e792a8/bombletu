@@ -1,19 +1,24 @@
-from ncatbot.core import BotClient
-from ncatbot.core.event import GroupMessageEvent
-from applet.mcp import MCPApplet
 import asyncio
 import os
 import signal
 import traceback
+from pathlib import Path
+
+from ncatbot.core.event import GroupMessageEvent
+from pydantic_ai.mcp import MCPServerConfig
+from pydantic_ai.toolsets import CombinedToolset
+from pydantic_graph import End
+from pydantic_graph.persistence.file import FileStatePersistence
+
+from agenting.graph import Idle, graph
+from agenting.tools import local_toolset
+from agenting.types import BotDeps, BotState
 from config import *
-from agent import Agent
-from mcp import ClientSession
-from mcp.client.stdio import stdio_client, StdioServerParameters
+from oicq.globl import qbot
+from oicq.status import init_read_status
+from oicq.tools import oicq_toolset
 
 logger = get_log(__name__)
-
-
-qbot = BotClient()
 
 
 @qbot.on_group_message()  # type: ignore
@@ -50,20 +55,40 @@ def get_mcp_config():
             }
         else:
             break
-    return mcp_config
+    return {"mcpServers": mcp_config}
 
 
 async def amain():
     qbot.run_backend()
-    oicq_mcp = stdio_client(
-        StdioServerParameters(command="python", args=["-m", "oicq.mcp"])
+
+    config = MCPServerConfig.model_validate(get_mcp_config())
+
+    servers = []
+    for name, server in config.mcp_servers.items():
+        server.id = name
+        server.tool_prefix = name
+        servers.append(server)
+
+    await init_read_status()
+
+    persist = FileStatePersistence(Path(DATADIR) / "graph_state.json")
+    persist.set_graph_types(graph)
+    if snapshot := await persist.load_next():
+        state = snapshot.state
+        node = snapshot.node
+    else:
+        state = BotState()
+        node = Idle(None)
+    deps = BotDeps(
+        CombinedToolset[BotDeps]([oicq_toolset, local_toolset] + servers), ""
     )
-    async with oicq_mcp as (rs, ws):
-        async with ClientSession(rs, ws) as session:
-            await session.initialize()
-            q = MCPApplet("oicq", session)
-            agent = Agent([q], get_mcp_config())
-            await agent.run(alarm)
+
+    async with graph.iter(node, state=state, deps=deps, persistence=persist) as run:
+        while True:
+            node = await run.next()
+            if isinstance(node, End):
+                break
+            logger.info(node)
 
 
 def main():

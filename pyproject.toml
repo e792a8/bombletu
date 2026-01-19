@@ -24,6 +24,7 @@ dependencies = [
     "langgraph-cli[inmem]>=0.4.7",
     "lru-dict>=1.4.1",
     "ncatbot>=4.4.1",
+    "pydantic-ai>=1.41.0",
     "python-dotenv>=1.2.1",
     "pytz>=2025.2",
     "shortuuid>=1.0.13",
